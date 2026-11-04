@@ -88,3 +88,12 @@ print(hardware_cost(qc, topology="heavy_hex", seed=0))
 ```
 
 `compare(..., n_seeds=5)` répète chaque métrique sur 5 graines et ajoute les colonnes `<métrique>_std`.
+
+## Dashboard
+
+```bash
+pip install -e ".[dashboard]"
+streamlit run dashboard/app.py
+```
+
+Voir [dashboard/README.md](dashboard/README.md).
