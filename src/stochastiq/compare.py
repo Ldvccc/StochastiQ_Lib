@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from qiskit import QuantumCircuit
 
@@ -5,11 +6,18 @@ from .gradients import gradient_variance
 from .metrics import entangling_capability, expressibility
 from .stats import circuit_stats
 
+_METRICS = {
+    "expressibility": expressibility,
+    "entangling_capability": entangling_capability,
+    "gradient_variance": gradient_variance,
+}
+
 
 def compare(
     ansatz_dict: dict[str, QuantumCircuit],
     n_samples: int = 1000,
     seed: int | None = None,
+    n_seeds: int = 1,
 ) -> pd.DataFrame:
     """Compare plusieurs ansatz sur leurs statistiques et métriques.
 
@@ -21,6 +29,9 @@ def compare(
         Nombre d'échantillons utilisé pour chaque métrique.
     seed : int ou None
         Graine du générateur aléatoire, pour la reproductibilité.
+    n_seeds : int
+        Nombre de graines (seed, seed+1, ...) sur lesquelles répéter chaque
+        métrique. Si ``seed`` vaut None, les répétitions sont sans graine.
 
     Retourne
     --------
@@ -28,21 +39,35 @@ def compare(
         Une ligne par circuit (index : nom), colonnes ``n_qubits``,
         ``n_parameters``, ``depth``, ``n_two_qubit_gates``, ``expressibility``,
         ``entangling_capability`` et ``gradient_variance``, triée par
-        expressibilité croissante (plus expressif d'abord).
+        expressibilité croissante (plus expressif d'abord). Si
+        ``n_seeds > 1``, les trois métriques sont des moyennes sur les graines
+        et chacune est suivie d'une colonne ``<nom>_std`` (écart-type).
+
+    Lève
+    ----
+    ValueError
+        Si ``n_seeds`` est inférieur à 1.
     """
+    if n_seeds < 1:
+        raise ValueError("n_seeds doit être supérieur ou égal à 1.")
+    seeds = [None] * n_seeds if seed is None else [seed + i for i in range(n_seeds)]
+
     rows = {}
     for name, ansatz in ansatz_dict.items():
         stats = circuit_stats(ansatz)
-        rows[name] = {
+        row = {
             "n_qubits": stats["n_qubits"],
             "n_parameters": stats["n_parameters"],
             "depth": stats["depth"],
             "n_two_qubit_gates": stats["n_two_qubit_gates"],
-            "expressibility": expressibility(ansatz, n_samples=n_samples, seed=seed),
-            "entangling_capability": entangling_capability(
-                ansatz, n_samples=n_samples, seed=seed
-            ),
-            "gradient_variance": gradient_variance(ansatz, n_samples=n_samples, seed=seed),
         }
+        for metric, func in _METRICS.items():
+            values = [func(ansatz, n_samples=n_samples, seed=s) for s in seeds]
+            if n_seeds == 1:
+                row[metric] = values[0]
+            else:
+                row[metric] = float(np.mean(values))
+                row[f"{metric}_std"] = float(np.std(values, ddof=1))
+        rows[name] = row
     df = pd.DataFrame.from_dict(rows, orient="index")
     return df.sort_values("expressibility")

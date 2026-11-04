@@ -70,3 +70,21 @@ from stochastiq import compare
 circuits = {name: build_ansatz(name, 4, 3) for name in list_ansatz()}
 print(compare(circuits, n_samples=500, seed=0))
 ```
+
+Histogramme des fidélités et référence de Haar (probabilités par classe) :
+
+```python
+from stochastiq import fidelity_histogram
+
+hist = fidelity_histogram(qc, seed=0)  # {"edges", "circuit", "haar"}
+```
+
+Coût de transpilation hors ligne sur une topologie (`list_topologies()`) :
+
+```python
+from stochastiq import hardware_cost
+
+print(hardware_cost(qc, topology="heavy_hex", seed=0))
+```
+
+`compare(..., n_seeds=5)` répète chaque métrique sur 5 graines et ajoute les colonnes `<métrique>_std`.

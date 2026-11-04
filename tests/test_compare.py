@@ -18,3 +18,17 @@ def test_compare():
     assert len(df) == 3
     assert set(df.index) == set(circuits)
     assert df["expressibility"].is_monotonic_increasing
+
+
+def test_compare_plusieurs_graines():
+    circuits = {name: build_ansatz(name, 2, 1) for name in ("ry_linear", "ryrz_linear")}
+    df = compare(circuits, n_samples=30, seed=0, n_seeds=3)
+    for metric in ("expressibility", "entangling_capability", "gradient_variance"):
+        assert f"{metric}_std" in df.columns
+        assert (df[f"{metric}_std"] >= 0).all()
+    assert df["expressibility"].is_monotonic_increasing
+
+
+def test_compare_une_graine_sans_std():
+    df = compare({"ry_linear": build_ansatz("ry_linear", 2, 1)}, n_samples=30, seed=0)
+    assert list(df.columns) == COLUMNS
