@@ -3,6 +3,8 @@ import math
 from qiskit import QuantumCircuit, transpile
 from qiskit.transpiler import CouplingMap
 
+from .stats import circuit_stats
+
 _BASIS_GATES = ["cx", "rz", "sx", "x"]
 
 _TOPOLOGIES = {
@@ -35,11 +37,16 @@ def hardware_cost(
 
     Transpilation hors ligne (aucune connexion à une machine réelle) avec
     ``qiskit.transpile``, vers les portes ``["cx", "rz", "sx", "x"]``, niveau
-    d'optimisation 1. La référence « avant » est le même circuit transpilé
-    vers les mêmes portes, sans contrainte de connectivité : la différence
-    mesure donc le seul coût du routage. Les topologies ``line``, ``ring`` et
-    ``full`` ont autant de qubits que l'ansatz ; ``heavy_hex`` est le réseau
-    heavy-hex de distance 3 (19 qubits).
+    d'optimisation 1. Trois niveaux de mesure sont retournés :
+
+    - ``before`` : le circuit d'origine (mêmes valeurs que ``circuit_stats``) ;
+    - ``basis_only`` : traduction vers les portes de base sur un graphe de
+      couplage complet, donc sans routage ;
+    - ``after`` : transpilation sur la topologie demandée.
+
+    Le rapport ``after`` / ``basis_only`` isole le coût du routage. Les
+    topologies ``line``, ``ring`` et ``full`` ont autant de qubits que
+    l'ansatz ; ``heavy_hex`` est le réseau heavy-hex de distance 3 (19 qubits).
 
     Paramètres
     ----------
@@ -53,14 +60,19 @@ def hardware_cost(
     Retourne
     --------
     dict
-        ``topology``, ``n_two_qubit_gates_before``, ``n_two_qubit_gates_after``,
-        ``depth_before``, ``depth_after`` et ``overhead_two_qubit``
-        (after / before, ``nan`` si le circuit n'a aucune porte à 2 qubits).
+        ``topology`` ; ``before``, ``basis_only`` et ``after``, chacun un dict
+        ``{"n_two_qubit_gates", "depth"}`` ; les clés à plat
+        ``n_two_qubit_gates_before``, ``depth_before`` (circuit d'origine),
+        ``n_two_qubit_gates_after``, ``depth_after`` ; ``overhead_two_qubit``
+        (portes à 2 qubits after / before, ``nan`` si le circuit d'origine
+        n'en a aucune) et ``routing_overhead_two_qubit`` (after / basis_only).
 
     Lève
     ----
     ValueError
-        Si la topologie est inconnue ou a moins de qubits que l'ansatz.
+        Si la topologie est inconnue ou a moins de qubits que l'ansatz, ou si
+        le circuit traduit n'a aucune porte à 2 qubits (surcoût du routage
+        non défini).
     """
     if topology not in _TOPOLOGIES:
         raise ValueError(
@@ -73,23 +85,36 @@ def hardware_cost(
             f"l'ansatz en demande {ansatz.num_qubits}."
         )
 
-    before = transpile(
-        ansatz, basis_gates=_BASIS_GATES, optimization_level=1, seed_transpiler=seed
-    )
-    after = transpile(
-        ansatz,
-        basis_gates=_BASIS_GATES,
-        coupling_map=coupling_map,
-        optimization_level=1,
-        seed_transpiler=seed,
-    )
-    n_before = _two_qubit_gates(before)
-    n_after = _two_qubit_gates(after)
+    stats = circuit_stats(ansatz)
+    before = {"n_two_qubit_gates": stats["n_two_qubit_gates"], "depth": stats["depth"]}
+
+    def _transpiled(target: CouplingMap) -> dict:
+        qc = transpile(
+            ansatz,
+            basis_gates=_BASIS_GATES,
+            coupling_map=target,
+            optimization_level=1,
+            seed_transpiler=seed,
+        )
+        return {"n_two_qubit_gates": _two_qubit_gates(qc), "depth": qc.depth()}
+
+    basis_only = _transpiled(CouplingMap.from_full(ansatz.num_qubits))
+    after = _transpiled(coupling_map)
+    if basis_only["n_two_qubit_gates"] == 0:
+        raise ValueError(
+            "Le circuit traduit n'a aucune porte à 2 qubits : surcoût du routage non défini."
+        )
+
+    n_before = before["n_two_qubit_gates"]
     return {
         "topology": topology,
+        "before": before,
+        "basis_only": basis_only,
+        "after": after,
         "n_two_qubit_gates_before": n_before,
-        "n_two_qubit_gates_after": n_after,
-        "depth_before": before.depth(),
-        "depth_after": after.depth(),
-        "overhead_two_qubit": n_after / n_before if n_before else math.nan,
+        "n_two_qubit_gates_after": after["n_two_qubit_gates"],
+        "depth_before": before["depth"],
+        "depth_after": after["depth"],
+        "overhead_two_qubit": after["n_two_qubit_gates"] / n_before if n_before else math.nan,
+        "routing_overhead_two_qubit": after["n_two_qubit_gates"] / basis_only["n_two_qubit_gates"],
     }
