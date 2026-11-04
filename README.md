@@ -53,3 +53,11 @@ from stochastiq import circuit_stats
 
 print(circuit_stats(qc))  # n_qubits, n_parameters, depth, n_two_qubit_gates, gate_counts
 ```
+
+Variance du gradient du premier paramètre (détection de plateaux stériles, coût ⟨Z₀⟩) :
+
+```python
+from stochastiq import gradient_variance
+
+print(gradient_variance(qc, n_samples=200, seed=0))
+```
