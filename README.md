@@ -26,3 +26,14 @@ from stochastiq import expressibility
 ansatz = real_amplitudes(4, reps=3)
 print(expressibility(ansatz, seed=0))  # plus bas = plus expressif
 ```
+
+## Autres fonctionnalités
+
+Ansatz prédéfinis (placeholders, voir `list_ansatz()`) :
+
+```python
+from stochastiq import build_ansatz, list_ansatz
+
+print(list_ansatz())
+qc = build_ansatz("ry_linear", n_qubits=4, layers=3)
+```
