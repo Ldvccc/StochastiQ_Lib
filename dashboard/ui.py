@@ -183,6 +183,20 @@ def reading_sentence(df: pd.DataFrame) -> str:
     return " ".join(sentences)
 
 
+LOW_SAMPLES_THRESHOLD = 1000
+
+LOW_SAMPLES_WARNING = (
+    "Avec moins de 1000 échantillons, l'expressibilité est surestimée. Comparez "
+    "uniquement des résultats obtenus avec le même nombre d'échantillons."
+)
+
+
+def compare_params_line(n_samples: int, seed: int, n_seeds: int) -> str:
+    """Rappelle les paramètres utilisés pour un calcul ``compare``."""
+    seeds = "1 graine" if n_seeds == 1 else f"{n_seeds} graines"
+    return f"Calcul effectué avec {n_samples} échantillons, graine {seed}, {seeds}."
+
+
 def stats_table(stats: dict) -> pd.DataFrame:
     """Met en forme le résultat de ``circuit_stats`` (hors détail des portes)."""
     keys = ["n_qubits", "n_parameters", "depth", "n_two_qubit_gates"]

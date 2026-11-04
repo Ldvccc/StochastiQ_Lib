@@ -53,6 +53,34 @@ def test_diagnostiquer_affiche_les_3_cartes():
     ]
 
 
+def test_avertissement_peu_d_echantillons():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    assert [info.value for info in at.tabs[0].info] == [ui.LOW_SAMPLES_WARNING]
+    assert [info.value for info in at.tabs[1].info] == [ui.LOW_SAMPLES_WARNING]
+    at.number_input(key="diag_samples").set_value(1000).run()
+    assert not at.tabs[0].info
+
+
+def test_comparateur_rappelle_les_parametres():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    at.multiselect(key="cmp_ansatz").set_value(["ry_linear", "ry_full"])
+    at.slider(key="cmp_qubits").set_value(2)
+    at.slider(key="cmp_layers").set_value(1)
+    at.number_input(key="cmp_samples").set_value(50)
+    at.slider(key="cmp_n_seeds").set_value(2)
+    at.button(key="cmp_run").click().run()
+    assert not at.exception
+    captions = [caption.value for caption in at.tabs[1].caption]
+    assert ui.compare_params_line(50, 0, 2) in captions
+
+
+def test_compare_params_line():
+    assert ui.compare_params_line(300, 0, 1) == "Calcul effectué avec 300 échantillons, graine 0, 1 graine."
+    assert ui.compare_params_line(1000, 7, 3).endswith("graine 7, 3 graines.")
+
+
 def _compare_df(with_std: bool) -> pd.DataFrame:
     df = pd.DataFrame(
         {

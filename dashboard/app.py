@@ -79,6 +79,8 @@ with tab_diag:
     c1, c2 = st.columns(2)
     n_samples = c1.number_input("Échantillons", 50, 5000, 500, step=50, key="diag_samples")
     seed = c2.number_input("Graine", 0, 1_000_000, 0, key="diag_seed")
+    if n_samples < ui.LOW_SAMPLES_THRESHOLD:
+        st.info(ui.LOW_SAMPLES_WARNING)
 
     if st.button("Diagnostiquer", type="primary", key="diag_run"):
         params = (name, n_qubits, layers, int(n_samples), int(seed))
@@ -129,6 +131,8 @@ with tab_compare:
     cmp_samples = c3.number_input("Échantillons", 50, 5000, 300, step=50, key="cmp_samples")
     cmp_seed = c4.number_input("Graine", 0, 1_000_000, 0, key="cmp_seed")
     n_seeds = c5.slider("Nombre de graines", 1, 10, 1, key="cmp_n_seeds")
+    if cmp_samples < ui.LOW_SAMPLES_THRESHOLD:
+        st.info(ui.LOW_SAMPLES_WARNING)
 
     if st.button("Comparer", type="primary", key="cmp_run"):
         if not names:
@@ -137,13 +141,14 @@ with tab_compare:
             params = (tuple(names), cmp_qubits, cmp_layers, int(cmp_samples), int(cmp_seed), n_seeds)
             try:
                 with st.spinner("Calcul en cours"):
-                    st.session_state["compare"] = run_compare(*params)
+                    st.session_state["compare"] = (params, run_compare(*params))
             except ValueError as error:
                 st.error(str(error))
 
     if "compare" in st.session_state:
-        df = st.session_state["compare"]
+        params, df = st.session_state["compare"]
         st.table(ui.compare_table(df))
+        st.caption(ui.compare_params_line(params[3], params[4], params[5]))
         st.markdown(ui.reading_sentence(df))
         fig = ui.expressibility_figure(df)
         st.pyplot(fig)
