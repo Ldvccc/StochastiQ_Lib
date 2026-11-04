@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from matplotlib.ticker import FuncFormatter
 
 SURFACE = "#F6F5FB"
 CARD = "#FFFFFF"
@@ -89,13 +90,31 @@ h1, h2, h3, h4, .sq-brand {{
 # Fonctions pures
 
 
-def format_value(value: float) -> str:
-    """Formate une valeur numérique pour l'affichage (``n/a`` si non définie)."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+def _is_missing(value) -> bool:
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def format_fr(x: float, decimals: int) -> str:
+    """Formate un nombre en notation française (virgule décimale).
+
+    Retourne ``n/a`` si la valeur n'est pas définie.
+    """
+    if _is_missing(x):
         return "n/a"
-    if value != 0 and abs(value) < 1e-3:
-        return f"{value:.3e}"
-    return f"{value:.4f}"
+    return f"{x:.{decimals}f}".replace(".", ",")
+
+
+def format_value(value: float) -> str:
+    """Formate une métrique : 4 décimales, virgule décimale.
+
+    Une valeur non nulle qui s'afficherait 0,0000 passe en notation
+    scientifique (``1,2000e-05``) pour ne pas être confondue avec zéro.
+    """
+    if _is_missing(value):
+        return "n/a"
+    if value != 0 and abs(value) < 5e-5:
+        return f"{value:.4e}".replace(".", ",")
+    return format_fr(value, 4)
 
 
 def compare_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -241,9 +260,9 @@ def hardware_table(cost: dict) -> pd.DataFrame:
 
 def format_overhead(overhead: float) -> str:
     """Formate un surcoût (rapport de nombres de portes)."""
-    if overhead is None or math.isnan(overhead):
+    if _is_missing(overhead):
         return "n/a"
-    return f"×{overhead:.2f}"
+    return f"×{format_fr(overhead, 2)}"
 
 
 def hardware_sentence(cost: dict) -> str:
@@ -293,6 +312,10 @@ def note(text: str) -> None:
     st.markdown(f'<p class="sq-note">{text}</p>', unsafe_allow_html=True)
 
 
+# Graduations d'axe en notation française (virgule décimale).
+FRENCH_TICKS = FuncFormatter(lambda value, _: f"{value:g}".replace(".", ","))
+
+
 def _style_axes(ax) -> None:
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
@@ -329,6 +352,8 @@ def fidelity_figure(histogram: dict):
     ax.set_xlabel("Fidélité")
     ax.set_ylabel("Probabilité")
     ax.set_xlim(0, 1)
+    ax.xaxis.set_major_formatter(FRENCH_TICKS)
+    ax.yaxis.set_major_formatter(FRENCH_TICKS)
     ax.legend(frameon=False, labelcolor=TEXT)
     fig.tight_layout()
     return fig
@@ -347,6 +372,7 @@ def expressibility_figure(df: pd.DataFrame):
         capsize=4,
     )
     ax.set_ylabel("Expressibilité (KL)")
+    ax.yaxis.set_major_formatter(FRENCH_TICKS)
     ax.tick_params(axis="x", rotation=30)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment("right")

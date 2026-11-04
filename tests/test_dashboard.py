@@ -2,6 +2,7 @@ import math
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -100,28 +101,53 @@ def _compare_df(with_std: bool) -> pd.DataFrame:
     return df
 
 
+def test_format_fr():
+    assert ui.format_fr(0.14160234, 4) == "0,1416"
+    assert ui.format_fr(1, 2) == "1,00"
+    assert ui.format_fr(-2.5, 1) == "-2,5"
+    assert ui.format_fr(12, 0) == "12"
+    assert ui.format_fr(math.nan, 4) == "n/a"
+    assert ui.format_fr(None, 4) == "n/a"
+
+
 def test_format_value():
-    assert ui.format_value(0.14160234) == "0.1416"
-    assert ui.format_value(0.00012) == "1.200e-04"
-    assert ui.format_value(0) == "0.0000"
+    assert ui.format_value(0.14160234) == "0,1416"
+    assert ui.format_value(0.00012) == "0,0001"
+    assert ui.format_value(0.000012) == "1,2000e-05"
+    assert ui.format_value(0) == "0,0000"
     assert ui.format_value(math.nan) == "n/a"
 
 
 def test_format_overhead():
-    assert ui.format_overhead(3.0) == "×3.00"
+    assert ui.format_overhead(1.0) == "×1,00"
+    assert ui.format_overhead(3.0) == "×3,00"
     assert ui.format_overhead(math.nan) == "n/a"
+
+
+def test_axes_en_notation_francaise():
+    hist = {
+        "edges": np.linspace(0, 1, 5),
+        "circuit": np.array([0.4, 0.3, 0.2, 0.1]),
+        "haar": np.array([0.5, 0.3, 0.15, 0.05]),
+    }
+    fig = ui.fidelity_figure(hist)
+    ax = fig.axes[0]
+    assert ax.xaxis.get_major_formatter()(0.25, 0) == "0,25"
+    assert ax.yaxis.get_major_formatter()(0.5, 0) == "0,5"
+    fig = ui.expressibility_figure(_compare_df(with_std=True))
+    assert fig.axes[0].yaxis.get_major_formatter()(0.05, 0) == "0,05"
 
 
 def test_compare_table_sans_std():
     table = ui.compare_table(_compare_df(with_std=False))
     assert list(table.index) == ["strongly_entangling", "ryrz_circular", "ry_linear"]
-    assert table.loc["ry_linear", "Expressibilité"] == "0.1955"
+    assert table.loc["ry_linear", "Expressibilité"] == "0,1955"
     assert "±" not in table.loc["ry_linear", "Intrication"]
 
 
 def test_compare_table_avec_std():
     table = ui.compare_table(_compare_df(with_std=True))
-    assert table.loc["ry_linear", "Expressibilité"] == "0.1955 ± 0.0010"
+    assert table.loc["ry_linear", "Expressibilité"] == "0,1955 ± 0,0010"
     assert list(table.columns) == [ui.METRIC_LABELS[k] for k in ui.METRIC_LABELS]
 
 
@@ -225,3 +251,10 @@ def test_phrase_materiel_sans_routage():
     sentence = ui.hardware_sentence(_cost(12, 31))
     assert "n'ajoute aucune porte à 2 qubits" in sentence
     assert "31" in sentence
+
+
+def test_phrases_en_notation_francaise():
+    sentence = ui.reading_sentence(_metrics_df(expr=[0.01, 0.05], ent=[0.5, 0.9]))
+    assert "0,0100" in sentence and "0.0100" not in sentence
+    cost = _cost(36, 58)
+    assert "×3,00" in ui.hardware_sentence(cost)
