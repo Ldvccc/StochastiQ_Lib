@@ -128,15 +128,41 @@ def test_stats_et_portes():
     assert ui.gate_counts_table(stats)["Nombre"].to_dict() == {"ry": 12, "cx": 9}
 
 
-def test_hardware_table():
-    cost = {
+def _cost(after_gates: int, after_depth: int) -> dict:
+    return {
         "topology": "line",
-        "n_two_qubit_gates_before": 8,
-        "n_two_qubit_gates_after": 24,
-        "depth_before": 16,
-        "depth_after": 28,
-        "overhead_two_qubit": 3.0,
+        "before": {"n_two_qubit_gates": 12, "depth": 15},
+        "basis_only": {"n_two_qubit_gates": 12, "depth": 31},
+        "after": {"n_two_qubit_gates": after_gates, "depth": after_depth},
+        "routing_overhead_two_qubit": after_gates / 12,
     }
-    table = ui.hardware_table(cost)
-    assert table.loc["Portes à 2 qubits"].tolist() == [8, 24]
-    assert table.loc["Profondeur"].tolist() == [16, 28]
+
+
+def test_hardware_table():
+    table = ui.hardware_table(_cost(36, 58))
+    assert list(table.columns) == ["Circuit d'origine", "Après traduction", "Après routage"]
+    assert table.index.name == "Topologie : Ligne"
+    assert table.loc["Portes à 2 qubits"].tolist() == [12, 12, 36]
+    assert table.loc["Profondeur"].tolist() == [15, 31, 58]
+
+
+def test_libelles_des_topologies():
+    assert [ui.topology_label(t) for t in ["line", "ring", "full", "heavy_hex"]] == [
+        "Ligne",
+        "Anneau",
+        "Complète",
+        "Hexagone lourd",
+    ]
+
+
+def test_phrase_materiel_avec_routage():
+    sentence = ui.hardware_sentence(_cost(36, 58))
+    assert "topologie Ligne" in sentence
+    assert "de 12 à 36" in sentence
+    assert "de 31 à 58" in sentence
+
+
+def test_phrase_materiel_sans_routage():
+    sentence = ui.hardware_sentence(_cost(12, 31))
+    assert "n'ajoute aucune porte à 2 qubits" in sentence
+    assert "31" in sentence

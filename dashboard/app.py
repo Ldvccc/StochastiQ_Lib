@@ -174,7 +174,7 @@ with tab_hardware:
     topology = c1.selectbox(
         "Topologie",
         list_topologies(),
-        format_func=lambda t: ui.TOPOLOGY_LABELS.get(t, t),
+        format_func=ui.topology_label,
         key="hw_topology",
     )
     hw_seed = c2.number_input("Graine du transpileur", 0, 1_000_000, 0, key="hw_seed")
@@ -183,10 +183,11 @@ with tab_hardware:
             cost = run_hardware(name, n_qubits, layers, topology, int(hw_seed))
         st.table(ui.hardware_table(cost))
         st.metric(
-            "Surcoût en portes à 2 qubits",
-            ui.format_overhead(cost["overhead_two_qubit"]),
-            help="Rapport entre les portes à 2 qubits après et avant routage.",
+            "Surcoût du routage",
+            ui.format_overhead(cost["routing_overhead_two_qubit"]),
+            help="Portes à 2 qubits après routage / après traduction vers les portes de base.",
         )
+        st.markdown(ui.hardware_sentence(cost))
     except ValueError as error:
         st.error(str(error))
     ui.note(

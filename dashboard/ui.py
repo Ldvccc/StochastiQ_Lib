@@ -30,7 +30,7 @@ TOPOLOGY_LABELS = {
     "line": "Ligne",
     "ring": "Anneau",
     "full": "Complète",
-    "heavy_hex": "Heavy-hex (19 qubits)",
+    "heavy_hex": "Hexagone lourd",
 }
 
 METRIC_LABELS = {
@@ -179,22 +179,60 @@ def gate_counts_table(stats: dict) -> pd.DataFrame:
     )
 
 
+def topology_label(topology: str) -> str:
+    """Retourne le libellé français d'une topologie de la bibliothèque."""
+    return TOPOLOGY_LABELS.get(topology, topology)
+
+
 def hardware_table(cost: dict) -> pd.DataFrame:
-    """Met en forme le résultat de ``hardware_cost`` en tableau avant / après."""
+    """Met en forme le résultat de ``hardware_cost`` sur ses trois niveaux de mesure."""
+    levels = {
+        "Circuit d'origine": cost["before"],
+        "Après traduction": cost["basis_only"],
+        "Après routage": cost["after"],
+    }
     return pd.DataFrame(
         {
-            "Avant": [cost["n_two_qubit_gates_before"], cost["depth_before"]],
-            "Après": [cost["n_two_qubit_gates_after"], cost["depth_after"]],
+            column: [level["n_two_qubit_gates"], level["depth"]]
+            for column, level in levels.items()
         },
-        index=pd.Index(["Portes à 2 qubits", "Profondeur"], name=f"Topologie {cost['topology']}"),
+        index=pd.Index(
+            ["Portes à 2 qubits", "Profondeur"],
+            name=f"Topologie : {topology_label(cost['topology'])}",
+        ),
     )
 
 
 def format_overhead(overhead: float) -> str:
-    """Formate le surcoût en portes à 2 qubits (rapport après / avant)."""
+    """Formate un surcoût (rapport de nombres de portes)."""
     if overhead is None or math.isnan(overhead):
         return "n/a"
     return f"×{overhead:.2f}"
+
+
+def hardware_sentence(cost: dict) -> str:
+    """Rédige une phrase de lecture factuelle du résultat de ``hardware_cost``."""
+    before, basis, after = cost["before"], cost["basis_only"], cost["after"]
+    label = topology_label(cost["topology"])
+    sentence = (
+        f"Le circuit d'origine compte {before['n_two_qubit_gates']} portes à 2 qubits "
+        f"pour une profondeur de {before['depth']}. La traduction vers les portes de base "
+        f"donne {basis['n_two_qubit_gates']} portes à 2 qubits et une profondeur de "
+        f"{basis['depth']}. "
+    )
+    if after["n_two_qubit_gates"] == basis["n_two_qubit_gates"]:
+        sentence += (
+            f"Sur la topologie {label}, le routage n'ajoute aucune porte à 2 qubits "
+            f"(profondeur après routage : {after['depth']})."
+        )
+    else:
+        sentence += (
+            f"Sur la topologie {label}, le routage fait passer les portes à 2 qubits de "
+            f"{basis['n_two_qubit_gates']} à {after['n_two_qubit_gates']} "
+            f"({format_overhead(cost['routing_overhead_two_qubit'])}) et la profondeur de "
+            f"{basis['depth']} à {after['depth']}."
+        )
+    return sentence
 
 
 # Composants graphiques
