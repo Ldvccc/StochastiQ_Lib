@@ -37,3 +37,11 @@ from stochastiq import build_ansatz, list_ansatz
 print(list_ansatz())
 qc = build_ansatz("ry_linear", n_qubits=4, layers=3)
 ```
+
+Capacité d'intrication (Meyer-Wallach moyenne, entre 0 et 1) :
+
+```python
+from stochastiq import entangling_capability
+
+print(entangling_capability(qc, seed=0))
+```
