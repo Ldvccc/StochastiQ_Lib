@@ -61,3 +61,12 @@ from stochastiq import gradient_variance
 
 print(gradient_variance(qc, n_samples=200, seed=0))
 ```
+
+Comparaison de plusieurs ansatz (DataFrame trié par expressibilité croissante) :
+
+```python
+from stochastiq import compare
+
+circuits = {name: build_ansatz(name, 4, 3) for name in list_ansatz()}
+print(compare(circuits, n_samples=500, seed=0))
+```

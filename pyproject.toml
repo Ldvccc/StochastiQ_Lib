@@ -12,6 +12,7 @@ license = { file = "LICENSE" }
 dependencies = [
     "numpy",
     "qiskit>=1.0",
+    "pandas",
 ]
 
 [project.optional-dependencies]
