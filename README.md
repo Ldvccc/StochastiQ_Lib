@@ -45,3 +45,11 @@ from stochastiq import entangling_capability
 
 print(entangling_capability(qc, seed=0))
 ```
+
+Statistiques du circuit (après transpilation vers `ry, rz, rx, cx, h`) :
+
+```python
+from stochastiq import circuit_stats
+
+print(circuit_stats(qc))  # n_qubits, n_parameters, depth, n_two_qubit_gates, gate_counts
+```
