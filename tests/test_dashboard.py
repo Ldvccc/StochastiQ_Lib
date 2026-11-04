@@ -97,23 +97,54 @@ def test_compare_table_avec_std():
     assert list(table.columns) == [ui.METRIC_LABELS[k] for k in ui.METRIC_LABELS]
 
 
-def test_phrase_de_lecture_cite_les_ex_aequo():
-    sentence = ui.reading_sentence(_compare_df(with_std=False))
-    assert "« strongly_entangling » et « ryrz_circular »" in sentence
-    assert "0.0115" in sentence
-    assert "0.8360" in sentence
-    assert "ry_linear" not in sentence
+def _metrics_df(expr, ent, std=None) -> pd.DataFrame:
+    df = pd.DataFrame(
+        {"expressibility": expr, "entangling_capability": ent},
+        index=[f"c{i}" for i in range(len(expr))],
+    )
+    if std is not None:
+        df["expressibility_std"] = std
+        df["entangling_capability_std"] = std
+    return df
 
 
-def test_phrase_de_lecture_un_seul_gagnant():
-    df = _compare_df(with_std=True).drop(index="ryrz_circular")
+def test_phrase_une_graine_ecart_net():
+    df = _metrics_df(expr=[0.01, 0.05, 0.2], ent=[0.5, 0.9, 0.6])
     sentence = ui.reading_sentence(df)
-    assert sentence.startswith("Le circuit le plus expressif est « strongly_entangling »")
-    assert "moyennes sur les graines" in sentence
+    assert "Le circuit le plus expressif est « c0 »" in sentence
+    assert "La plus forte intrication est obtenue par « c1 »" in sentence
+    assert "bruit" not in sentence
+    assert "graines" not in sentence
 
 
-def test_phrase_de_lecture_tableau_vide():
+def test_phrase_une_graine_ecart_flou():
+    df = _metrics_df(expr=[0.100, 0.105, 0.3], ent=[0.80, 0.78, 0.5])
+    sentence = ui.reading_sentence(df)
+    assert "plus expressif" not in sentence
+    assert "plus forte intrication" not in sentence
+    assert sentence.count("du même ordre que le bruit d'échantillonnage") == 2
+    assert "relancez avec plusieurs graines" in sentence
+
+
+def test_phrase_plusieurs_graines_gagnant_net():
+    df = _metrics_df(expr=[0.01, 0.05], ent=[0.9, 0.6], std=[0.005, 0.005])
+    sentence = ui.reading_sentence(df)
+    assert "Le circuit le plus expressif est « c0 »" in sentence
+    assert "La plus forte intrication est obtenue par « c0 »" in sentence
+    assert "Valeurs moyennes sur les graines." in sentence
+
+
+def test_phrase_plusieurs_graines_egalite():
+    df = _metrics_df(expr=[0.01, 0.02], ent=[0.80, 0.79], std=[0.01, 0.01])
+    sentence = ui.reading_sentence(df)
+    assert "plus expressif" not in sentence
+    assert "plus forte intrication" not in sentence
+    assert sentence.count("indistinguables sur cette métrique") == 2
+
+
+def test_phrase_de_lecture_moins_de_deux_circuits():
     assert ui.reading_sentence(_compare_df(with_std=False).iloc[0:0]) == ""
+    assert ui.reading_sentence(_compare_df(with_std=False).iloc[0:1]) == ""
 
 
 def test_stats_et_portes():

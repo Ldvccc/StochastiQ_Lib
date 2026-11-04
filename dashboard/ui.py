@@ -120,45 +120,67 @@ def compare_table(df: pd.DataFrame) -> pd.DataFrame:
     return table
 
 
-def _names(names: list[str]) -> str:
-    quoted = [f"« {name} »" for name in names]
-    if len(quoted) == 1:
-        return quoted[0]
-    return ", ".join(quoted[:-1]) + " et " + quoted[-1]
+def _metric_sentence(df: pd.DataFrame, metric: str, lower_is_better: bool, winner: str) -> str:
+    """Phrase sur une métrique : gagnant si l'écart avec le deuxième est significatif."""
+    ordered = df.sort_values(metric, ascending=lower_is_better)
+    (name1, v1), (name2, v2) = list(ordered[metric].items())[:2]
+    gap = abs(v1 - v2)
+    label = METRIC_LABELS[metric]
+
+    std_column = f"{metric}_std"
+    if std_column in df.columns:
+        noise = ordered[std_column].iloc[0] + ordered[std_column].iloc[1]
+        if gap <= noise:
+            return (
+                f"{label} : « {name1} » et « {name2} » sont indistinguables sur cette "
+                f"métrique (écart {format_value(gap)}, inférieur à la somme des "
+                f"écarts-types {format_value(noise)})."
+            )
+    elif gap <= 0.10 * abs(v1):
+        return (
+            f"{label} : les différences sont du même ordre que le bruit "
+            "d'échantillonnage ; relancez avec plusieurs graines."
+        )
+    return winner.format(
+        name1=name1, v1=format_value(v1), name2=name2, v2=format_value(v2)
+    )
 
 
 def reading_sentence(df: pd.DataFrame) -> str:
     """Rédige une phrase de lecture du tableau de ``compare``.
 
-    Cite le ou les circuits les plus expressifs (expressibilité minimale) et
-    ceux qui ont la plus forte intrication, avec leurs valeurs. Les ex aequo
-    sont tous cités. Retourne une chaîne vide si le tableau est vide.
+    Pour l'expressibilité et l'intrication, désigne le meilleur circuit
+    seulement si son écart avec le deuxième est significatif :
+
+    - une seule graine (pas de colonnes ``_std``) : écart supérieur à 10 % de
+      la valeur du meilleur ; sinon, la phrase signale que les différences
+      sont du même ordre que le bruit d'échantillonnage ;
+    - plusieurs graines : écart supérieur à la somme des deux écarts-types ;
+      sinon, la phrase indique que les circuits sont indistinguables.
+
+    Retourne une chaîne vide s'il y a moins de deux circuits.
     """
-    if df.empty:
+    if len(df) < 2:
         return ""
-    averaged = "expressibility_std" in df.columns
-
-    expr = df["expressibility"]
-    best_expr = [name for name, v in expr.items() if np.isclose(v, expr.min())]
-    ent = df["entangling_capability"]
-    best_ent = [name for name, v in ent.items() if np.isclose(v, ent.max())]
-
-    if len(best_expr) == 1:
-        first = f"Le circuit le plus expressif est {_names(best_expr)}"
-    else:
-        first = f"Les circuits les plus expressifs sont {_names(best_expr)}"
-    first += f" (expressibilité {format_value(expr.min())})."
-
-    if len(best_ent) == 1:
-        second = f"La plus forte intrication est obtenue par {_names(best_ent)}"
-    else:
-        second = f"La plus forte intrication est obtenue par {_names(best_ent)}, ex aequo"
-    second += f" ({format_value(ent.max())})."
-
-    sentence = f"{first} {second}"
-    if averaged:
-        sentence += " Valeurs moyennes sur les graines."
-    return sentence
+    sentences = [
+        _metric_sentence(
+            df,
+            "expressibility",
+            lower_is_better=True,
+            winner="Le circuit le plus expressif est « {name1} » "
+            "(expressibilité {v1}, contre {v2} pour « {name2} »).",
+        ),
+        _metric_sentence(
+            df,
+            "entangling_capability",
+            lower_is_better=False,
+            winner="La plus forte intrication est obtenue par « {name1} » "
+            "({v1}, contre {v2} pour « {name2} »).",
+        ),
+    ]
+    if "expressibility_std" in df.columns:
+        sentences.append("Valeurs moyennes sur les graines.")
+    return " ".join(sentences)
 
 
 def stats_table(stats: dict) -> pd.DataFrame:
