@@ -312,6 +312,31 @@ def note(text: str) -> None:
     st.markdown(f'<p class="sq-note">{text}</p>', unsafe_allow_html=True)
 
 
+# Style du schéma de circuit (``QuantumCircuit.draw("mpl", style=...)``).
+CIRCUIT_STYLE = {
+    "backgroundcolor": CARD,
+    "textcolor": TEXT,
+    "linecolor": TEXT,
+    "creglinecolor": TEXT_MUTED,
+    "gatefacecolor": VIOLET,
+    "gatetextcolor": CARD,
+    "subtextcolor": CARD,
+    "displaycolor": {
+        "rx": [VIOLET, CARD],
+        "ry": [VIOLET, CARD],
+        "rz": [VIOLET, CARD],
+        "cx": [TEXT, CARD],
+        # Couleur du « + » de la cible (premier élément) : blanc sur disque #14163F.
+        "target": [CARD, CARD],
+    },
+}
+
+
+def circuit_figure(ansatz):
+    """Dessine un circuit aux couleurs StochastiQ."""
+    return ansatz.draw("mpl", style=CIRCUIT_STYLE)
+
+
 # Graduations d'axe en notation française (virgule décimale).
 FRENCH_TICKS = FuncFormatter(lambda value, _: f"{value:g}".replace(".", ","))
 

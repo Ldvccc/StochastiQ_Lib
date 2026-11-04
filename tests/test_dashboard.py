@@ -258,3 +258,14 @@ def test_phrases_en_notation_francaise():
     assert "0,0100" in sentence and "0.0100" not in sentence
     cost = _cost(36, 58)
     assert "×3,00" in ui.hardware_sentence(cost)
+
+
+def test_schema_de_circuit_style_accepte_par_qiskit():
+    import warnings
+
+    from stochastiq import build_ansatz
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fig = ui.circuit_figure(build_ansatz("ryrz_linear", 4, 3))
+    assert fig.get_facecolor()[:3] == (1.0, 1.0, 1.0)

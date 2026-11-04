@@ -160,7 +160,7 @@ with tab_ansatz:
     name, n_qubits, layers = circuit_inputs("ans")
     try:
         ansatz = build_ansatz(name, n_qubits, layers)
-        fig = ansatz.draw("mpl")
+        fig = ui.circuit_figure(ansatz)
         st.pyplot(fig)
         plt.close(fig)
         stats = run_stats(name, n_qubits, layers)
