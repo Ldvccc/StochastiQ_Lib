@@ -66,7 +66,7 @@ def test_avertissement_peu_d_echantillons():
 def test_comparateur_rappelle_les_parametres():
     at = AppTest.from_file(APP, default_timeout=60)
     at.run()
-    at.multiselect(key="cmp_ansatz").set_value(["ry_linear", "ry_full"])
+    at.multiselect(key="cmp_ansatz").set_value(["hardware_efficient", "all_to_all"])
     at.slider(key="cmp_qubits").set_value(2)
     at.slider(key="cmp_layers").set_value(1)
     at.number_input(key="cmp_samples").set_value(50)
@@ -267,5 +267,5 @@ def test_schema_de_circuit_style_accepte_par_qiskit():
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        fig = ui.circuit_figure(build_ansatz("ryrz_linear", 4, 3))
+        fig = ui.circuit_figure(build_ansatz("hardware_efficient", 4, 3))
     assert fig.get_facecolor()[:3] == (1.0, 1.0, 1.0)

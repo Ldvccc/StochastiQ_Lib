@@ -27,7 +27,7 @@ def test_coherent_avec_expressibility():
     [
         # Valeurs obtenues avec l'implémentation d'avant le refactor.
         (real_amplitudes(3, reps=2), {"n_samples": 200, "seed": 0}, 0.4108859559616048),
-        (build_ansatz("ryrz_linear", 2, 1), {"n_samples": 150, "n_bins": 20, "seed": 7}, 0.08902782302132872),
+        (build_ansatz("hardware_efficient", 2, 1), {"n_samples": 150, "n_bins": 20, "seed": 7}, 0.08902782302132872),
     ],
 )
 def test_expressibility_inchangee(ansatz, kwargs, expected):

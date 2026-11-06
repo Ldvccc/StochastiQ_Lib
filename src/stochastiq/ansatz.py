@@ -1,22 +1,76 @@
-"""Construction d'ansatz paramétrés.
+"""Construction des ansatz de QCBM Lab.
 
-Les 7 circuits définis ici sont des PLACEHOLDERS : ils devront être alignés
-plus tard sur les vrais ansatz du projet.
+Définitions d'après le rapport QCBM Lab, section 2.4. Pour n qubits et L
+couches, chaque couche l = 0..L-1 applique d'abord les k rotations de
+l'ansatz sur chaque qubit j, puis ses entangleurs. Le paramètre de la
+rotation r du qubit j dans la couche l a l'indice ((l * n) + j) * k + r :
+c'est un tableau de forme (L, n, k) aplati.
+
+- ``basic_entangler`` : RX ; CNOT(i, (i+1) % n) pour i = 0..n-1 si n > 2,
+  un seul CNOT(0, 1) si n = 2, aucun si n = 1. Paramètres : L·n.
+- ``strongly_entangling`` : RZ(φ), RY(θ), RZ(ω) ; CNOT(i, (i+r) % n) pour
+  tout i, avec r = (l % (n-1)) + 1 (aucun si n = 1). Paramètres : 3·L·n.
+- ``hardware_efficient`` : RY, RZ ; CNOT(i, i+1) pour i = 0..n-2.
+  Paramètres : 2·L·n, CNOT : (n-1)·L.
+- ``rotation_only`` : RY ; aucun CNOT. Paramètres : L·n.
+- ``all_to_all`` : RX, RY, RZ ; CNOT(i, j) pour toutes les paires i < j.
+  Paramètres : 3·L·n, CNOT : n(n-1)/2 · L.
+- ``brick_wall`` : RY, RZ ; couche paire : CNOT(i, i+1) pour i = 0, 2, 4...,
+  couche impaire : i = 1, 3, 5... (tant que i+1 < n). Paramètres : 2·L·n.
+- ``data_reuploading`` : RZ, RY, RZ ; anneau CNOT(i, (i+1) % n) pour
+  i = 0..n-1. Paramètres : 3·L·n, CNOT : n·L. Pour n = 2, l'anneau donne
+  CNOT(0, 1) puis CNOT(1, 0) (deux CNOT de sens opposés, toujours n·L) ;
+  aucun CNOT pour n = 1.
 """
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
 
-# nom -> (rotations appliquées sur chaque qubit, connectivité des CNOT)
+
+def _ring(n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    if n_qubits < 2:
+        return []
+    return [(i, (i + 1) % n_qubits) for i in range(n_qubits)]
+
+
+def _basic_ring(n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    if n_qubits == 2:
+        return [(0, 1)]
+    return _ring(n_qubits, layer)
+
+
+def _strongly_ranges(n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    if n_qubits < 2:
+        return []
+    r = (layer % (n_qubits - 1)) + 1
+    return [(i, (i + r) % n_qubits) for i in range(n_qubits)]
+
+
+def _linear(n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    return [(i, i + 1) for i in range(n_qubits - 1)]
+
+
+def _none(n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    return []
+
+
+def _all_pairs(n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    return [(i, j) for i in range(n_qubits) for j in range(i + 1, n_qubits)]
+
+
+def _brick(n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    return [(i, i + 1) for i in range(layer % 2, n_qubits - 1, 2)]
+
+
+# nom -> (rotations appliquées sur chaque qubit, CNOT de la couche l)
 _ANSATZ = {
-    "ry_linear": (("ry",), "linear"),
-    "ry_circular": (("ry",), "circular"),
-    "ry_full": (("ry",), "full"),
-    "ryrz_linear": (("ry", "rz"), "linear"),
-    "ryrz_circular": (("ry", "rz"), "circular"),
-    "ryrz_full": (("ry", "rz"), "full"),
-    # Provisoire.
-    "strongly_entangling": (("ry", "rz"), "circular"),
+    "basic_entangler": (("rx",), _basic_ring),
+    "strongly_entangling": (("rz", "ry", "rz"), _strongly_ranges),
+    "hardware_efficient": (("ry", "rz"), _linear),
+    "rotation_only": (("ry",), _none),
+    "all_to_all": (("rx", "ry", "rz"), _all_pairs),
+    "brick_wall": (("ry", "rz"), _brick),
+    "data_reuploading": (("rz", "ry", "rz"), _ring),
 }
 
 
@@ -25,21 +79,11 @@ def list_ansatz() -> list[str]:
     return list(_ANSATZ)
 
 
-def _cnot_pairs(entanglement: str, n_qubits: int) -> list[tuple[int, int]]:
-    if entanglement == "linear" or (entanglement == "circular" and n_qubits <= 2):
-        return [(i, i + 1) for i in range(n_qubits - 1)]
-    if entanglement == "circular":
-        return [(i, (i + 1) % n_qubits) for i in range(n_qubits)]
-    return [(i, j) for i in range(n_qubits) for j in range(i + 1, n_qubits)]
-
-
 def build_ansatz(name: str, n_qubits: int, layers: int) -> QuantumCircuit:
-    """Construit un ansatz paramétré à partir de son nom.
+    """Construit un ansatz QCBM Lab à partir de son nom.
 
-    Chaque couche applique les rotations de l'ansatz (RY, ou RY puis RZ) sur
-    chaque qubit, puis des CNOT selon la connectivité : linéaire (i → i+1),
-    circulaire (i → (i+1) % n, un seul CNOT si n = 2) ou complète (toutes
-    les paires i < j).
+    Voir la docstring du module pour la définition de chaque ansatz et
+    l'ordre des paramètres.
 
     Paramètres
     ----------
@@ -53,8 +97,8 @@ def build_ansatz(name: str, n_qubits: int, layers: int) -> QuantumCircuit:
     Retourne
     --------
     QuantumCircuit
-        Circuit à ``layers * n_qubits`` paramètres (``ry_*``) ou
-        ``layers * n_qubits * 2`` (``ryrz_*`` et ``strongly_entangling``).
+        Circuit à ``layers * n_qubits * k`` paramètres, k étant le nombre de
+        rotations par qubit de l'ansatz.
 
     Lève
     ----
@@ -66,15 +110,14 @@ def build_ansatz(name: str, n_qubits: int, layers: int) -> QuantumCircuit:
             f"Ansatz inconnu : {name!r}. Noms valides : {', '.join(list_ansatz())}."
         )
 
-    rotations, entanglement = _ANSATZ[name]
-    theta = ParameterVector("θ", layers * n_qubits * len(rotations))
+    rotations, entanglers = _ANSATZ[name]
+    k = len(rotations)
+    theta = ParameterVector("θ", layers * n_qubits * k)
     qc = QuantumCircuit(n_qubits, name=name)
-    k = 0
-    for _ in range(layers):
-        for q in range(n_qubits):
-            for rotation in rotations:
-                getattr(qc, rotation)(theta[k], q)
-                k += 1
-        for control, target in _cnot_pairs(entanglement, n_qubits):
+    for layer in range(layers):
+        for j in range(n_qubits):
+            for r, rotation in enumerate(rotations):
+                getattr(qc, rotation)(theta[(layer * n_qubits + j) * k + r], j)
+        for control, target in entanglers(n_qubits, layer):
             qc.cx(control, target)
     return qc

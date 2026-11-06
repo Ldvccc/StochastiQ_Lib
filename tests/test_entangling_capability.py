@@ -33,13 +33,13 @@ def test_sans_cnot_pas_d_intrication():
     assert entangling_capability(qc, n_samples=50, seed=0) == pytest.approx(0, abs=1e-9)
 
 
-def test_ry_full_intrique():
-    value = entangling_capability(build_ansatz("ry_full", 3, 2), n_samples=100, seed=0)
+def test_all_to_all_intrique():
+    value = entangling_capability(build_ansatz("all_to_all", 3, 2), n_samples=100, seed=0)
     assert 0.2 < value <= 1
 
 
 def test_meme_seed_meme_resultat():
-    qc = build_ansatz("ry_linear", 3, 2)
+    qc = build_ansatz("hardware_efficient", 3, 2)
     a = entangling_capability(qc, n_samples=50, seed=1)
     b = entangling_capability(qc, n_samples=50, seed=1)
     assert a == b
