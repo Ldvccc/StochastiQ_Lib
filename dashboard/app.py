@@ -1,0 +1,195 @@
+"""Dashboard local StochastiQ : diagnostic de circuits.
+
+Lancement : ``streamlit run dashboard/app.py``. Toutes les valeurs affichées
+viennent de la bibliothèque ``stochastiq``.
+"""
+
+import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+import ui  # noqa: E402
+from stochastiq import (  # noqa: E402
+    build_ansatz,
+    circuit_stats,
+    compare,
+    entangling_capability,
+    expressibility,
+    fidelity_histogram,
+    gradient_variance,
+    hardware_cost,
+    list_ansatz,
+    list_topologies,
+)
+
+st.set_page_config(page_title="StochastiQ", layout="wide")
+ui.inject_css()
+ui.sidebar_brand()
+
+
+@st.cache_data(show_spinner=False)
+def run_diagnostic(name: str, n_qubits: int, layers: int, n_samples: int, seed: int) -> dict:
+    ansatz = build_ansatz(name, n_qubits, layers)
+    return {
+        "expressibility": expressibility(ansatz, n_samples=n_samples, seed=seed),
+        "entangling_capability": entangling_capability(ansatz, n_samples=n_samples, seed=seed),
+        "gradient_variance": gradient_variance(ansatz, n_samples=n_samples, seed=seed),
+        "histogram": fidelity_histogram(ansatz, n_samples=n_samples, seed=seed),
+    }
+
+
+@st.cache_data(show_spinner=False)
+def run_compare(
+    names: tuple[str, ...], n_qubits: int, layers: int, n_samples: int, seed: int, n_seeds: int
+):
+    circuits = {name: build_ansatz(name, n_qubits, layers) for name in names}
+    return compare(circuits, n_samples=n_samples, seed=seed, n_seeds=n_seeds)
+
+
+@st.cache_data(show_spinner=False)
+def run_stats(name: str, n_qubits: int, layers: int) -> dict:
+    return circuit_stats(build_ansatz(name, n_qubits, layers))
+
+
+@st.cache_data(show_spinner=False)
+def run_hardware(name: str, n_qubits: int, layers: int, topology: str, seed: int) -> dict:
+    return hardware_cost(build_ansatz(name, n_qubits, layers), topology=topology, seed=seed)
+
+
+def circuit_inputs(prefix: str):
+    """Choix commun de l'ansatz, du nombre de qubits et de couches."""
+    c1, c2, c3 = st.columns(3)
+    name = c1.selectbox("Ansatz", list_ansatz(), key=f"{prefix}_ansatz")
+    n_qubits = c2.slider("Qubits", 2, 8, 4, key=f"{prefix}_qubits")
+    layers = c3.slider("Couches", 1, 8, 3, key=f"{prefix}_layers")
+    return name, n_qubits, layers
+
+
+tab_diag, tab_compare, tab_ansatz, tab_hardware = st.tabs(
+    ["Diagnostic", "Comparateur", "Ansatz", "Matériel"]
+)
+
+with tab_diag:
+    st.header("Diagnostic")
+    name, n_qubits, layers = circuit_inputs("diag")
+    c1, c2 = st.columns(2)
+    n_samples = c1.number_input("Échantillons", 50, 5000, 500, step=50, key="diag_samples")
+    seed = c2.number_input("Graine", 0, 1_000_000, 0, key="diag_seed")
+
+    if st.button("Diagnostiquer", type="primary", key="diag_run"):
+        params = (name, n_qubits, layers, int(n_samples), int(seed))
+        try:
+            with st.spinner("Calcul en cours"):
+                st.session_state["diagnostic"] = (params, run_diagnostic(*params))
+        except ValueError as error:
+            st.error(str(error))
+
+    if "diagnostic" in st.session_state:
+        params, result = st.session_state["diagnostic"]
+        st.caption(
+            f"{params[0]}, {params[1]} qubits, {params[2]} couches, "
+            f"{params[3]} échantillons, graine {params[4]}."
+        )
+        cards = st.columns(3)
+        cards[0].metric(
+            "Expressibilité",
+            ui.format_value(result["expressibility"]),
+            help="Divergence KL avec la distribution de Haar. Plus bas = plus expressif.",
+        )
+        cards[1].metric(
+            "Intrication",
+            ui.format_value(result["entangling_capability"]),
+            help="Mesure de Meyer-Wallach moyenne, entre 0 et 1.",
+        )
+        cards[2].metric(
+            "Variance du gradient",
+            ui.format_value(result["gradient_variance"]),
+            help="Variance du gradient du premier paramètre, coût ⟨Z₀⟩.",
+        )
+        st.subheader("Histogramme des fidélités")
+        fig = ui.fidelity_figure(result["histogram"])
+        st.pyplot(fig)
+        plt.close(fig)
+        ui.note(
+            "Plus bas = plus expressif : l'expressibilité mesure l'écart entre "
+            "l'histogramme du circuit et la référence de Haar."
+        )
+
+with tab_compare:
+    st.header("Comparateur")
+    names = st.multiselect("Ansatz", list_ansatz(), default=list_ansatz(), key="cmp_ansatz")
+    c1, c2 = st.columns(2)
+    cmp_qubits = c1.slider("Qubits", 2, 8, 4, key="cmp_qubits")
+    cmp_layers = c2.slider("Couches", 1, 8, 3, key="cmp_layers")
+    c3, c4, c5 = st.columns(3)
+    cmp_samples = c3.number_input("Échantillons", 50, 5000, 300, step=50, key="cmp_samples")
+    cmp_seed = c4.number_input("Graine", 0, 1_000_000, 0, key="cmp_seed")
+    n_seeds = c5.slider("Nombre de graines", 1, 10, 1, key="cmp_n_seeds")
+
+    if st.button("Comparer", type="primary", key="cmp_run"):
+        if not names:
+            st.error("Sélectionnez au moins un ansatz.")
+        else:
+            params = (tuple(names), cmp_qubits, cmp_layers, int(cmp_samples), int(cmp_seed), n_seeds)
+            try:
+                with st.spinner("Calcul en cours"):
+                    st.session_state["compare"] = run_compare(*params)
+            except ValueError as error:
+                st.error(str(error))
+
+    if "compare" in st.session_state:
+        df = st.session_state["compare"]
+        st.table(ui.compare_table(df))
+        st.markdown(ui.reading_sentence(df))
+        fig = ui.expressibility_figure(df)
+        st.pyplot(fig)
+        plt.close(fig)
+        ui.note("Plus bas = plus expressif.")
+
+with tab_ansatz:
+    st.header("Ansatz")
+    name, n_qubits, layers = circuit_inputs("ans")
+    try:
+        ansatz = build_ansatz(name, n_qubits, layers)
+        fig = ansatz.draw("mpl")
+        st.pyplot(fig)
+        plt.close(fig)
+        stats = run_stats(name, n_qubits, layers)
+        c1, c2 = st.columns(2)
+        c1.subheader("Caractéristiques")
+        c1.table(ui.stats_table(stats))
+        c2.subheader("Portes par type")
+        c2.table(ui.gate_counts_table(stats))
+    except ValueError as error:
+        st.error(str(error))
+
+with tab_hardware:
+    st.header("Matériel")
+    name, n_qubits, layers = circuit_inputs("hw")
+    c1, c2 = st.columns(2)
+    topology = c1.selectbox(
+        "Topologie",
+        list_topologies(),
+        format_func=lambda t: ui.TOPOLOGY_LABELS.get(t, t),
+        key="hw_topology",
+    )
+    hw_seed = c2.number_input("Graine du transpileur", 0, 1_000_000, 0, key="hw_seed")
+    try:
+        with st.spinner("Transpilation en cours"):
+            cost = run_hardware(name, n_qubits, layers, topology, int(hw_seed))
+        st.table(ui.hardware_table(cost))
+        st.metric(
+            "Surcoût en portes à 2 qubits",
+            ui.format_overhead(cost["overhead_two_qubit"]),
+            help="Rapport entre les portes à 2 qubits après et avant routage.",
+        )
+    except ValueError as error:
+        st.error(str(error))
+    ui.note(
+        "Transpilation hors ligne avec Qiskit, vers les portes cx, rz, sx et x : "
+        "aucune connexion à une vraie machine."
+    )

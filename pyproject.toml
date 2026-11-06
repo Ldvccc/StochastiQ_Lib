@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 examples = ["matplotlib", "jupyter"]
+dashboard = ["streamlit", "matplotlib", "pylatexenc"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

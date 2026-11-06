@@ -3,19 +3,18 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
 
-def expressibility(
+def fidelity_histogram(
     ansatz: QuantumCircuit,
     n_samples: int = 2000,
     n_bins: int = 75,
     seed: int | None = None,
-) -> float:
-    """Calcule l'expressibilité d'un ansatz paramétré.
+) -> dict:
+    """Calcule l'histogramme des fidélités d'un ansatz et sa référence de Haar.
 
-    Implémente la mesure de Sim et al. (2019), arXiv:1905.10876 : on tire
-    ``n_samples`` paires de paramètres uniformes dans [0, 2π], on calcule la
-    fidélité |<ψ1|ψ2>|² entre les deux états produits, puis on compare
-    l'histogramme de ces fidélités à la distribution de Haar
-    P(F) = (d-1)(1-F)^(d-2), avec d = 2^n_qubits, via la divergence KL.
+    On tire ``n_samples`` paires de paramètres uniformes dans [0, 2π] et on
+    calcule la fidélité |<ψ1|ψ2>|² entre les deux états produits. La
+    référence de Haar est P(F) = (d-1)(1-F)^(d-2), avec d = 2^n_qubits ; ses
+    probabilités par classe se calculent avec la CDF 1 - (1 - F)^(d-1).
 
     Paramètres
     ----------
@@ -30,9 +29,9 @@ def expressibility(
 
     Retourne
     --------
-    float
-        Divergence KL entre la distribution des fidélités et celle de Haar.
-        Plus la valeur est basse, plus l'ansatz est expressif.
+    dict
+        ``edges`` (bornes des ``n_bins`` classes), ``circuit`` et ``haar``
+        (probabilités par classe, de somme 1).
 
     Lève
     ----
@@ -61,6 +60,47 @@ def expressibility(
     # Probabilités de Haar par classe, via la CDF 1 - (1 - F)^(d-1).
     cdf = 1 - (1 - edges) ** (d - 1)
     p_haar = np.diff(cdf)
+
+    return {"edges": edges, "circuit": p_ansatz, "haar": p_haar}
+
+
+def expressibility(
+    ansatz: QuantumCircuit,
+    n_samples: int = 2000,
+    n_bins: int = 75,
+    seed: int | None = None,
+) -> float:
+    """Calcule l'expressibilité d'un ansatz paramétré.
+
+    Implémente la mesure de Sim et al. (2019), arXiv:1905.10876 : on compare
+    l'histogramme des fidélités entre états produits par des paramètres
+    aléatoires (voir ``fidelity_histogram``) à la distribution de Haar
+    P(F) = (d-1)(1-F)^(d-2), avec d = 2^n_qubits, via la divergence KL.
+
+    Paramètres
+    ----------
+    ansatz : QuantumCircuit
+        Circuit paramétré à évaluer.
+    n_samples : int
+        Nombre de paires de paramètres tirées.
+    n_bins : int
+        Nombre de classes de l'histogramme sur [0, 1].
+    seed : int ou None
+        Graine du générateur aléatoire, pour la reproductibilité.
+
+    Retourne
+    --------
+    float
+        Divergence KL entre la distribution des fidélités et celle de Haar.
+        Plus la valeur est basse, plus l'ansatz est expressif.
+
+    Lève
+    ----
+    ValueError
+        Si le circuit n'a aucun paramètre libre.
+    """
+    histogram = fidelity_histogram(ansatz, n_samples=n_samples, n_bins=n_bins, seed=seed)
+    p_ansatz, p_haar = histogram["circuit"], histogram["haar"]
 
     eps = 1e-12
     return float(np.sum(p_ansatz * np.log((p_ansatz + eps) / (p_haar + eps))))
