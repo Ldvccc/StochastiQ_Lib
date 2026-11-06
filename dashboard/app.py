@@ -70,10 +70,11 @@ def run_scaling(
     layers_mode: str,
     n_samples: int,
     seed: int,
+    observable: str,
 ):
     # La barre est créée et vidée dans la fonction : Streamlit rejoue ces
     # éléments lors d'un accès au cache, sans référence à un bloc extérieur.
-    text = f"Étude en cours : {ui.ansatz_label(name)}"
+    text = f"Étude en cours : {ui.ansatz_label(name)}, {ui.OBSERVABLE_LABELS[observable]}"
     bar = st.progress(0.0, text=text)
     df = gradient_scaling(
         name,
@@ -81,6 +82,7 @@ def run_scaling(
         layers=layers,
         layers_mode=layers_mode,
         n_samples=n_samples,
+        observable=observable,
         seed=seed,
         callback=lambda done, total: bar.progress(done / total, text=text),
     )
@@ -298,6 +300,17 @@ with tab_barren:
     c4, c5 = st.columns(2)
     bp_samples = c4.number_input("Échantillons", 10, 2000, 100, step=10, key="bp_samples")
     bp_seed = c5.number_input("Graine", 0, 1_000_000, 0, key="bp_seed")
+    c6, c7 = st.columns(2)
+    # La case est lue avant l'observable, qu'elle rend sans objet.
+    bp_compare = c7.checkbox(ui.COMPARE_OBSERVABLES_LABEL, key="bp_compare")
+    bp_observable = c6.radio(
+        "Observable",
+        list(ui.OBSERVABLE_LABELS),
+        format_func=ui.OBSERVABLE_LABELS.get,
+        key="bp_observable",
+        horizontal=True,
+        disabled=bp_compare,
+    )
     if bp_qubits[1] > 6:
         st.info("Plage au-delà de 6 qubits : calcul plus long.")
 
@@ -313,41 +326,54 @@ with tab_barren:
                     "mode": bp_mode,
                     "échantillons": int(bp_samples),
                     "graine": int(bp_seed),
-                    "observable": "Z0",
+                    "observable": "Z0+Zall" if bp_compare else bp_observable,
                 }
+                observables = ["Z0", "Zall"] if bp_compare else [bp_observable]
+                st.session_state["barren_compare"] = bp_compare
                 st.session_state["barren"] = {
-                    bp_name: run_scaling(
-                        bp_name,
-                        bp_qubits[0],
-                        bp_qubits[1],
-                        bp_layers,
-                        bp_mode,
-                        int(bp_samples),
-                        int(bp_seed),
-                    )
-                    for bp_name in bp_names
+                    observable: {
+                        bp_name: run_scaling(
+                            bp_name,
+                            bp_qubits[0],
+                            bp_qubits[1],
+                            bp_layers,
+                            bp_mode,
+                            int(bp_samples),
+                            int(bp_seed),
+                            observable,
+                        )
+                        for bp_name in bp_names
+                    }
+                    for observable in observables
                 }
             except ValueError as error:
                 st.error(str(error))
 
     if "barren" in st.session_state:
-        results = st.session_state["barren"]
-        fig = ui.scaling_figure(results)
+        by_observable = st.session_state["barren"]
+        if st.session_state["barren_compare"]:
+            fig = ui.observables_figure(by_observable["Z0"], by_observable["Zall"])
+            summary = ui.observables_summary(by_observable["Z0"], by_observable["Zall"])
+            table = ui.observables_table(summary)
+            sentences = [ui.observables_sentence(n, e) for n, e in summary.items()]
+            note = ui.observable_note(None)
+        else:
+            observable, results = next(iter(by_observable.items()))
+            fig = ui.scaling_figure(results)
+            summary = ui.scaling_summary(results)
+            table = ui.scaling_table(summary)
+            sentences = [ui.scaling_sentence(n, e) for n, e in summary.items()]
+            note = ui.observable_note(observable)
         st.pyplot(fig)
         plt.close(fig)
-        summary = ui.scaling_summary(results)
-        st.table(ui.scaling_table(summary))
+        st.table(table)
         st.download_button(
             ui.CSV_LABEL,
-            ui.to_csv(ui.scaling_frame(results), st.session_state["barren_params"]),
+            ui.to_csv(ui.observables_frame(by_observable), st.session_state["barren_params"]),
             file_name="plateau_sterile.csv",
             mime="text/csv",
             key="bp_csv",
         )
-        lines = [ui.layers_line(*st.session_state["barren_layers"])]
-        lines += [ui.scaling_sentence(bp_name, entry) for bp_name, entry in summary.items()]
+        lines = [ui.layers_line(*st.session_state["barren_layers"]), *sentences]
         st.markdown("  \n".join(lines))
-        ui.note(
-            "Résultat sur une observable locale Z0 ; il dépend de l'observable et du "
-            "nombre de couches."
-        )
+        ui.note(note)
