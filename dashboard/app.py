@@ -185,6 +185,22 @@ with tab_compare:
     if "compare" in st.session_state:
         params, df = st.session_state["compare"]
         st.table(ui.compare_table(df))
+        st.download_button(
+            ui.CSV_LABEL,
+            ui.to_csv(
+                ui.compare_frame(df),
+                {
+                    "qubits": params[1],
+                    "couches": params[2],
+                    "échantillons": params[3],
+                    "graine": params[4],
+                    "graines": params[5],
+                },
+            ),
+            file_name="comparaison.csv",
+            mime="text/csv",
+            key="cmp_csv",
+        )
         st.caption(ui.compare_params_line(params[3], params[4], params[5]))
         st.markdown(ui.reading_sentence(df))
         st.subheader("Expressibilité et variance du gradient")
@@ -230,6 +246,16 @@ with tab_hardware:
         with st.spinner("Transpilation en cours"):
             cost = run_hardware(name, n_qubits, layers, topology, int(hw_seed))
         st.table(ui.hardware_table(cost))
+        st.download_button(
+            ui.CSV_LABEL,
+            ui.to_csv(
+                ui.hardware_frame(name, cost),
+                {"qubits": n_qubits, "couches": layers, "graine": int(hw_seed)},
+            ),
+            file_name="materiel.csv",
+            mime="text/csv",
+            key="hw_csv",
+        )
         st.metric(
             "Surcoût du routage",
             ui.format_overhead(cost["routing_overhead_two_qubit"]),
@@ -281,6 +307,14 @@ with tab_barren:
         else:
             try:
                 st.session_state["barren_layers"] = (bp_mode, bp_layers)
+                st.session_state["barren_params"] = {
+                    "qubits": f"{bp_qubits[0]}-{bp_qubits[1]}",
+                    "couches": bp_layers if bp_mode == "fixed" else "nombre de qubits",
+                    "mode": bp_mode,
+                    "échantillons": int(bp_samples),
+                    "graine": int(bp_seed),
+                    "observable": "Z0",
+                }
                 st.session_state["barren"] = {
                     bp_name: run_scaling(
                         bp_name,
@@ -303,6 +337,13 @@ with tab_barren:
         plt.close(fig)
         summary = ui.scaling_summary(results)
         st.table(ui.scaling_table(summary))
+        st.download_button(
+            ui.CSV_LABEL,
+            ui.to_csv(ui.scaling_frame(results), st.session_state["barren_params"]),
+            file_name="plateau_sterile.csv",
+            mime="text/csv",
+            key="bp_csv",
+        )
         lines = [ui.layers_line(*st.session_state["barren_layers"])]
         lines += [ui.scaling_sentence(bp_name, entry) for bp_name, entry in summary.items()]
         st.markdown("  \n".join(lines))

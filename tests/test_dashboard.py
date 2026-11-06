@@ -599,3 +599,59 @@ def test_pareto_sur_la_variance_active():
         index=["all_to_all", "brick_wall"],
     )
     assert ui.pareto_mask(df) == [True, False]
+
+
+def _read_csv(data: bytes):
+    import io
+
+    text = data.decode("utf-8")
+    first_line = text.splitlines()[0]
+    return first_line, pd.read_csv(io.StringIO(text), comment="#")
+
+
+def test_csv_compare_colonnes_techniques_et_entete():
+    from stochastiq import __version__
+
+    df = _compare_df(with_std=True)
+    first_line, back = _read_csv(
+        ui.to_csv(ui.compare_frame(df), {"qubits": 4, "couches": 3, "échantillons": 1000, "graine": 0})
+    )
+    assert first_line == f"# qubits=4; couches=3; échantillons=1000; graine=0; version={__version__}"
+    assert list(back.columns) == ["ansatz", *df.columns]
+    assert back["ansatz"].tolist() == list(df.index)
+    assert back["expressibility"].tolist() == pytest.approx(df["expressibility"].tolist())
+
+
+def test_csv_point_decimal_et_virgule_separatrice():
+    data = ui.to_csv(pd.DataFrame({"a": [0.5], "b": [1.25]}), {"graine": 0}).decode("utf-8")
+    assert data.splitlines()[1:] == ["a,b", "0.5,1.25"]
+
+
+def test_csv_plateau_et_materiel():
+    results = {
+        "hardware_efficient": _scaling_df([0.1, 0.05], [0.12, 0.08]),
+        "brick_wall": _scaling_df([0.2, 0.1], [0.3, 0.2]),
+    }
+    _, back = _read_csv(ui.to_csv(ui.scaling_frame(results), {"qubits": "2-3"}))
+    assert back.columns[0] == "ansatz"
+    assert {"n_qubits", "mean_variance", "active_mean_variance"} <= set(back.columns)
+    assert back["ansatz"].tolist() == ["hardware_efficient"] * 2 + ["brick_wall"] * 2
+
+    _, back = _read_csv(ui.to_csv(ui.hardware_frame("data_reuploading", _cost(36, 58)), {"qubits": 4}))
+    assert back.loc[0, "ansatz"] == "data_reuploading"
+    assert back.loc[0, "topology"] == "line"
+    assert back.loc[0, "n_two_qubit_gates_basis_only"] == 12
+    assert back.loc[0, "depth_basis_only"] == 31
+    assert back.loc[0, "routing_overhead_two_qubit"] == pytest.approx(3.0)
+
+
+def test_boutons_csv_dans_l_app():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    assert any(b.label == ui.CSV_LABEL for b in at.tabs[3].get("download_button"))
+    at.multiselect(key="bp_ansatz").set_value(["hardware_efficient"])
+    at.slider(key="bp_qubits").set_value((2, 3))
+    at.number_input(key="bp_samples").set_value(20)
+    at.button(key="bp_run").click().run()
+    assert not at.exception
+    assert any(b.label == ui.CSV_LABEL for b in at.tabs[4].get("download_button"))

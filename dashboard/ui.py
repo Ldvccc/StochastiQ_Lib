@@ -18,7 +18,7 @@ import streamlit as st
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
-from stochastiq import fit_decay, pareto_front
+from stochastiq import __version__, fit_decay, pareto_front
 
 SURFACE = "#F6F5FB"
 CARD = "#FFFFFF"
@@ -236,6 +236,43 @@ LOW_SAMPLES_WARNING = (
     "Avec moins de 1000 échantillons, l'expressibilité est surestimée. Comparez "
     "uniquement des résultats obtenus avec le même nombre d'échantillons."
 )
+
+
+CSV_LABEL = "Télécharger en CSV"
+
+
+def to_csv(df: pd.DataFrame, params: dict) -> bytes:
+    """Export CSV UTF-8 : une ligne de commentaire ``#`` avec les paramètres, puis le tableau.
+
+    Séparateur virgule, point décimal, noms de colonnes de la bibliothèque.
+    La version du paquet est ajoutée aux paramètres. Relecture :
+    ``pandas.read_csv(fichier, comment="#")``.
+    """
+    params = {**params, "version": __version__}
+    comment = "# " + "; ".join(f"{key}={value}" for key, value in params.items())
+    return (comment + "\n" + df.to_csv(index=False, lineterminator="\n")).encode("utf-8")
+
+
+def compare_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Tableau ``compare`` à exporter : le nom de l'ansatz devient la colonne ``ansatz``."""
+    return df.rename_axis("ansatz").reset_index()
+
+
+def scaling_frame(results: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Études ``gradient_scaling`` réunies en un tableau, avec une colonne ``ansatz``."""
+    return pd.concat(
+        [df.assign(ansatz=name)[["ansatz", *df.columns]] for name, df in results.items()],
+        ignore_index=True,
+    )
+
+
+def hardware_frame(name: str, cost: dict) -> pd.DataFrame:
+    """Résultat ``hardware_cost`` à plat, en une ligne (niveau ``basis_only`` suffixé)."""
+    row = {"ansatz": name}
+    row.update({key: value for key, value in cost.items() if not isinstance(value, dict)})
+    for key, value in cost["basis_only"].items():
+        row[f"{key}_basis_only"] = value
+    return pd.DataFrame([row])
 
 
 def compare_params_line(n_samples: int, seed: int, n_seeds: int) -> str:
