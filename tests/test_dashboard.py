@@ -123,6 +123,7 @@ def _compare_df(with_std: bool) -> pd.DataFrame:
             "expressibility": [0.0115, 0.0115, 0.1955],
             "entangling_capability": [0.836, 0.836, 0.679],
             "gradient_variance": [0.030, 0.030, 0.229],
+            "gradient_variance_active": [0.045, 0.042, 0.499],
             "inactive_fraction": [1 / 3, 10 / 36, 13 / 24],
         },
         index=["strongly_entangling", "data_reuploading", "hardware_efficient"],
@@ -176,6 +177,7 @@ def test_compare_table_sans_std():
     assert list(table.index) == ["StronglyEntangling", "DataReuploading", "HardwareEfficient"]
     assert table.loc["HardwareEfficient", "Expressibilité"] == "0,1955"
     assert table.loc["HardwareEfficient", "Paramètres inactifs"] == "54,2 %"
+    assert table.loc["HardwareEfficient", "Variance du gradient (actifs)"] == "0,4990"
     assert "±" not in table.loc["HardwareEfficient", "Intrication"]
 
 

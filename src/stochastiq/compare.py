@@ -46,12 +46,14 @@ def compare(
         Une ligne par circuit (index : nom), colonnes ``n_qubits``,
         ``n_parameters``, ``depth``, ``n_two_qubit_gates``, ``expressibility``,
         ``entangling_capability``, ``gradient_variance`` (variance du gradient
-        moyennée sur tous les paramètres, coût ``"Z0"``) et
-        ``inactive_fraction`` (part des paramètres inactifs), triée par
-        expressibilité croissante (plus expressif d'abord). Si
+        moyennée sur tous les paramètres, coût ``"Z0"``),
+        ``gradient_variance_active`` (moyennée sur les seuls paramètres
+        actifs) et ``inactive_fraction`` (part des paramètres inactifs),
+        triée par expressibilité croissante (plus expressif d'abord). Si
         ``n_seeds > 1``, les colonnes sont des moyennes sur les graines, et
-        ``expressibility``, ``entangling_capability`` et ``gradient_variance``
-        sont chacune suivies d'une colonne ``<nom>_std`` (écart-type).
+        ``expressibility``, ``entangling_capability``, ``gradient_variance``
+        et ``gradient_variance_active`` sont chacune suivies d'une colonne
+        ``<nom>_std`` (écart-type).
 
     Lève
     ----
@@ -75,6 +77,7 @@ def compare(
             _aggregate(row, metric, [func(ansatz, n_samples=n_samples, seed=s) for s in seeds])
         details = [gradient_variance_details(ansatz, n_samples=n_samples, seed=s) for s in seeds]
         _aggregate(row, "gradient_variance", [d["mean_variance"] for d in details])
+        _aggregate(row, "gradient_variance_active", [d["active_mean_variance"] for d in details])
         row["inactive_fraction"] = float(np.mean([d["inactive_fraction"] for d in details]))
         rows[name] = row
     df = pd.DataFrame.from_dict(rows, orient="index")

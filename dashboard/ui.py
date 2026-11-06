@@ -28,7 +28,7 @@ CORAL = "#D42A45"
 VIOLET_LIGHT = "#ECE9FF"
 LINE = "#E1DFEE"
 
-METRICS = ["expressibility", "entangling_capability", "gradient_variance"]
+METRICS = ["expressibility", "entangling_capability", "gradient_variance", "gradient_variance_active"]
 
 # Noms d'affichage des ansatz ; la bibliothèque garde les identifiants snake_case.
 ANSATZ_LABELS = {
@@ -56,6 +56,7 @@ METRIC_LABELS = {
     "expressibility": "Expressibilité",
     "entangling_capability": "Intrication",
     "gradient_variance": "Variance du gradient",
+    "gradient_variance_active": "Variance du gradient (actifs)",
     "inactive_fraction": "Paramètres inactifs",
 }
 
