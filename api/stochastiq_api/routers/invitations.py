@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db, utcnow
 from ..deps import ProjectAccess, get_current_user, require_role
+from ..events import record
 from ..models import Invitation, Membership, User
 from ..roles import MIN_ROLE
 from ..schemas import InvitationIn, InvitationOut, InvitationPublic
@@ -78,6 +79,7 @@ def create_invitation(
         created_by=access.user.id,
     )
     db.add(invitation)
+    record(db, project_id, access.user.id, "member_invited", {"email": data.email, "role": data.role})
     db.commit()
     return _out(invitation, request)
 
@@ -159,5 +161,6 @@ def accept_invitation(
         raise HTTPException(status.HTTP_409_CONFLICT, "Vous êtes déjà membre de ce projet.")
     db.add(Membership(project_id=invitation.project_id, user_id=user.id, role=invitation.role))
     invitation.status = "accepted"
+    record(db, invitation.project_id, user.id, "member_joined", {"name": user.name, "role": invitation.role})
     db.commit()
     return {"project_id": invitation.project_id, "role": invitation.role}

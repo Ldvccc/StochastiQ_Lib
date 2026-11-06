@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import __version__
 from .config import Settings
 from .db import make_engine, make_sessionmaker, upgrade_database
-from .routers import auth, invitations, meta, projects
+from .jobs import RunManager, mark_orphans_failed
+from .routers import auth, catalog, collaboration, invitations, meta, projects, runs
 from .security import MaskInvitationTokens
 
 
@@ -21,7 +22,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         upgrade_database(settings.database_url)
+        mark_orphans_failed(app.state.sessionmaker)
+        app.state.runs = RunManager(app.state.sessionmaker, settings.run_timeout_seconds)
         yield
+        app.state.runs.shutdown()
         app.state.engine.dispose()
 
     app = FastAPI(
@@ -41,7 +45,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
-    for router in (meta.router, auth.router, projects.router, invitations.router):
+    for router in (
+        meta.router,
+        auth.router,
+        projects.router,
+        invitations.router,
+        catalog.router,
+        runs.router,
+        collaboration.router,
+    ):
         app.include_router(router)
 
     # Les jetons d'invitation apparaissent dans des chemins d'URL : on les masque.
