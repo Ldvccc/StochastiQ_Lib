@@ -156,6 +156,13 @@ def test_catalogue_des_ansatz(client):
     structure = client.get("/ansatz/hardware_efficient/structure?n_qubits=3&layers=1").json()
     assert structure["n_qubits"] == 3
     assert len(structure["columns"]) == 4
+    assert structure["stats"] == {
+        "n_qubits": 3,
+        "n_parameters": 6,
+        "depth": 4,
+        "n_two_qubit_gates": 2,
+        "gate_counts": {"ry": 3, "rz": 3, "cx": 2},
+    }
     assert client.get("/ansatz/inconnu/structure?n_qubits=3&layers=1").status_code == 404
     assert client.get("/ansatz/hardware_efficient/structure?n_qubits=9&layers=1").status_code == 422
     assert [t["name"] for t in client.get("/topologies").json()] == ["line", "ring", "full", "heavy_hex"]
