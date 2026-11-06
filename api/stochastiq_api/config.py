@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./stochastiq.db"
     cors_origin: str = "http://localhost:5173"
     jwt_expire_hours: int = 12
+    # Durée maximale d'un run, en secondes (10 minutes).
+    run_timeout_seconds: float = 600
 
     def check(self) -> None:
         """Lève ``RuntimeError`` si la configuration n'est pas sûre hors développement."""
