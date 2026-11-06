@@ -255,13 +255,20 @@ with tab_barren:
     )
     c1, c2, c3 = st.columns(3)
     bp_qubits = c1.slider("Qubits (min et max)", 2, 8, (2, 6), key="bp_qubits")
-    bp_layers = c2.slider("Couches", 1, 8, 3, key="bp_layers")
+    # Le mode est lu avant le curseur « Couches », qu'il désactive.
     bp_mode = c3.radio(
         "Mode de couches",
         list(ui.LAYERS_MODE_LABELS),
         format_func=ui.LAYERS_MODE_LABELS.get,
         key="bp_mode",
     )
+    # Désactivé, le curseur reste affiché : sa valeur est conservée dans
+    # st.session_state["bp_layers"] et réapparaît en repassant en mode « Fixe ».
+    bp_layers = c2.slider(
+        "Couches", 1, 8, 3, key="bp_layers", disabled=bp_mode == "linear"
+    )
+    if bp_mode == "linear":
+        c2.caption(ui.PROPORTIONAL_LAYERS_NOTE)
     c4, c5 = st.columns(2)
     bp_samples = c4.number_input("Échantillons", 10, 2000, 100, step=10, key="bp_samples")
     bp_seed = c5.number_input("Graine", 0, 1_000_000, 0, key="bp_seed")
@@ -273,6 +280,7 @@ with tab_barren:
             st.error("Sélectionnez au moins un ansatz.")
         else:
             try:
+                st.session_state["barren_layers"] = (bp_mode, bp_layers)
                 st.session_state["barren"] = {
                     bp_name: run_scaling(
                         bp_name,
@@ -298,8 +306,9 @@ with tab_barren:
             for bp_name, df in results.items()
         }
         st.table(ui.scaling_table(fits))
-        for bp_name, fit in fits.items():
-            st.markdown(ui.scaling_sentence(bp_name, fit))
+        lines = [ui.layers_line(*st.session_state["barren_layers"])]
+        lines += [ui.scaling_sentence(bp_name, fit) for bp_name, fit in fits.items()]
+        st.markdown("  \n".join(lines))
         ui.note(
             "Résultat sur une observable locale Z0 ; il dépend de l'observable et du "
             "nombre de couches."
