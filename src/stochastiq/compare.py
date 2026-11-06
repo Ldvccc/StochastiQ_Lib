@@ -2,15 +2,22 @@ import numpy as np
 import pandas as pd
 from qiskit import QuantumCircuit
 
-from .gradients import gradient_variance
+from .gradients import gradient_variance_details
 from .metrics import entangling_capability, expressibility
 from .stats import circuit_stats
 
 _METRICS = {
     "expressibility": expressibility,
     "entangling_capability": entangling_capability,
-    "gradient_variance": gradient_variance,
 }
+
+
+def _aggregate(row: dict, metric: str, values: list[float]) -> None:
+    if len(values) == 1:
+        row[metric] = values[0]
+    else:
+        row[metric] = float(np.mean(values))
+        row[f"{metric}_std"] = float(np.std(values, ddof=1))
 
 
 def compare(
@@ -38,10 +45,13 @@ def compare(
     pandas.DataFrame
         Une ligne par circuit (index : nom), colonnes ``n_qubits``,
         ``n_parameters``, ``depth``, ``n_two_qubit_gates``, ``expressibility``,
-        ``entangling_capability`` et ``gradient_variance``, triée par
+        ``entangling_capability``, ``gradient_variance`` (variance du gradient
+        moyennée sur tous les paramètres, coût ``"Z0"``) et
+        ``inactive_fraction`` (part des paramètres inactifs), triée par
         expressibilité croissante (plus expressif d'abord). Si
-        ``n_seeds > 1``, les trois métriques sont des moyennes sur les graines
-        et chacune est suivie d'une colonne ``<nom>_std`` (écart-type).
+        ``n_seeds > 1``, les colonnes sont des moyennes sur les graines, et
+        ``expressibility``, ``entangling_capability`` et ``gradient_variance``
+        sont chacune suivies d'une colonne ``<nom>_std`` (écart-type).
 
     Lève
     ----
@@ -62,12 +72,10 @@ def compare(
             "n_two_qubit_gates": stats["n_two_qubit_gates"],
         }
         for metric, func in _METRICS.items():
-            values = [func(ansatz, n_samples=n_samples, seed=s) for s in seeds]
-            if n_seeds == 1:
-                row[metric] = values[0]
-            else:
-                row[metric] = float(np.mean(values))
-                row[f"{metric}_std"] = float(np.std(values, ddof=1))
+            _aggregate(row, metric, [func(ansatz, n_samples=n_samples, seed=s) for s in seeds])
+        details = [gradient_variance_details(ansatz, n_samples=n_samples, seed=s) for s in seeds]
+        _aggregate(row, "gradient_variance", [d["mean_variance"] for d in details])
+        row["inactive_fraction"] = float(np.mean([d["inactive_fraction"] for d in details]))
         rows[name] = row
     df = pd.DataFrame.from_dict(rows, orient="index")
     return df.sort_values("expressibility")

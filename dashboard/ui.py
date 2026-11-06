@@ -53,6 +53,7 @@ METRIC_LABELS = {
     "expressibility": "Expressibilité",
     "entangling_capability": "Intrication",
     "gradient_variance": "Variance du gradient",
+    "inactive_fraction": "Paramètres inactifs",
 }
 
 _CSS = f"""
@@ -116,16 +117,25 @@ def format_fr(x: float, decimals: int) -> str:
 
 
 def format_value(value: float) -> str:
-    """Formate une métrique : 4 décimales, virgule décimale.
+    """Formate une métrique : 4 décimales, virgule décimale, sans notation scientifique."""
+    return format_fr(value, 4)
 
-    Une valeur non nulle qui s'afficherait 0,0000 passe en notation
-    scientifique (``1,2000e-05``) pour ne pas être confondue avec zéro.
-    """
+
+def inactive_line(details: dict) -> str:
+    """Résume les paramètres inactifs d'un résultat ``gradient_variance_details``."""
+    n_inactive = details["n_inactive_parameters"]
+    n_params = len(details["variance_per_parameter"])
+    return (
+        f"Paramètres inactifs (variance du gradient < 10⁻¹²) : {n_inactive} sur "
+        f"{n_params} ({format_fraction(details['inactive_fraction'])})."
+    )
+
+
+def format_fraction(value: float) -> str:
+    """Formate une proportion entre 0 et 1 en pourcentage (``33,3 %``)."""
     if _is_missing(value):
         return "n/a"
-    if value != 0 and abs(value) < 5e-5:
-        return f"{value:.4e}".replace(".", ",")
-    return format_fr(value, 4)
+    return f"{format_fr(100 * value, 1)} %"
 
 
 def compare_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -146,6 +156,7 @@ def compare_table(df: pd.DataFrame) -> pd.DataFrame:
             ]
         else:
             table[METRIC_LABELS[metric]] = [format_value(m) for m in df[metric]]
+    table[METRIC_LABELS["inactive_fraction"]] = [format_fraction(f) for f in df["inactive_fraction"]]
     table.index = pd.Index([ansatz_label(name) for name in df.index], name="Ansatz")
     return table
 

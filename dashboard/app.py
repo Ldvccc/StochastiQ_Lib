@@ -20,7 +20,7 @@ from stochastiq import (  # noqa: E402
     entangling_capability,
     expressibility,
     fidelity_histogram,
-    gradient_variance,
+    gradient_variance_details,
     hardware_cost,
     list_ansatz,
     list_topologies,
@@ -37,7 +37,7 @@ def run_diagnostic(name: str, n_qubits: int, layers: int, n_samples: int, seed: 
     return {
         "expressibility": expressibility(ansatz, n_samples=n_samples, seed=seed),
         "entangling_capability": entangling_capability(ansatz, n_samples=n_samples, seed=seed),
-        "gradient_variance": gradient_variance(ansatz, n_samples=n_samples, seed=seed),
+        "gradient": gradient_variance_details(ansatz, n_samples=n_samples, seed=seed),
         "histogram": fidelity_histogram(ansatz, n_samples=n_samples, seed=seed),
     }
 
@@ -111,9 +111,10 @@ with tab_diag:
         )
         cards[2].metric(
             "Variance du gradient",
-            ui.format_value(result["gradient_variance"]),
-            help="Variance du gradient du premier paramètre, coût ⟨Z₀⟩.",
+            ui.format_value(result["gradient"]["mean_variance"]),
+            help="Variance du gradient moyennée sur tous les paramètres, coût ⟨Z₀⟩.",
         )
+        st.caption(ui.inactive_line(result["gradient"]))
         st.subheader("Histogramme des fidélités")
         fig = ui.fidelity_figure(result["histogram"])
         st.pyplot(fig)

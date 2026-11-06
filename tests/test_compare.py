@@ -8,6 +8,7 @@ COLUMNS = [
     "expressibility",
     "entangling_capability",
     "gradient_variance",
+    "inactive_fraction",
 ]
 
 
@@ -26,6 +27,8 @@ def test_compare_plusieurs_graines():
     for metric in ("expressibility", "entangling_capability", "gradient_variance"):
         assert f"{metric}_std" in df.columns
         assert (df[f"{metric}_std"] >= 0).all()
+    assert "inactive_fraction_std" not in df.columns
+    assert df["inactive_fraction"].between(0, 1).all()
     assert df["expressibility"].is_monotonic_increasing
 
 

@@ -52,6 +52,7 @@ def test_diagnostiquer_affiche_les_3_cartes():
         "Intrication",
         "Variance du gradient",
     ]
+    assert any("Paramètres inactifs" in c.value for c in at.tabs[0].caption)
 
 
 def test_avertissement_peu_d_echantillons():
@@ -92,6 +93,7 @@ def _compare_df(with_std: bool) -> pd.DataFrame:
             "expressibility": [0.0115, 0.0115, 0.1955],
             "entangling_capability": [0.836, 0.836, 0.679],
             "gradient_variance": [0.030, 0.030, 0.229],
+            "inactive_fraction": [1 / 3, 10 / 36, 13 / 24],
         },
         index=["strongly_entangling", "data_reuploading", "hardware_efficient"],
     )
@@ -113,7 +115,8 @@ def test_format_fr():
 def test_format_value():
     assert ui.format_value(0.14160234) == "0,1416"
     assert ui.format_value(0.00012) == "0,0001"
-    assert ui.format_value(0.000012) == "1,2000e-05"
+    assert ui.format_value(0.000012) == "0,0000"
+    assert "e" not in ui.format_value(1.4e-33)
     assert ui.format_value(0) == "0,0000"
     assert ui.format_value(math.nan) == "n/a"
 
@@ -142,6 +145,7 @@ def test_compare_table_sans_std():
     table = ui.compare_table(_compare_df(with_std=False))
     assert list(table.index) == ["StronglyEntangling", "DataReuploading", "HardwareEfficient"]
     assert table.loc["HardwareEfficient", "Expressibilité"] == "0,1955"
+    assert table.loc["HardwareEfficient", "Paramètres inactifs"] == "54,2 %"
     assert "±" not in table.loc["HardwareEfficient", "Intrication"]
 
 
@@ -299,3 +303,21 @@ def test_listes_deroulantes_en_noms_d_affichage():
     assert at.selectbox(key="diag_ansatz").value == "basic_entangler"
     assert at.selectbox(key="diag_ansatz").format_func("brick_wall") == "BrickWall"
     assert "HardwareEfficient" in at.multiselect(key="cmp_ansatz").options
+
+
+def test_format_fraction():
+    assert ui.format_fraction(1 / 3) == "33,3 %"
+    assert ui.format_fraction(0) == "0,0 %"
+    assert ui.format_fraction(math.nan) == "n/a"
+
+
+def test_inactive_line():
+    details = {
+        "mean_variance": 0.02,
+        "variance_per_parameter": np.zeros(36),
+        "n_inactive_parameters": 12,
+        "inactive_fraction": 12 / 36,
+    }
+    assert ui.inactive_line(details) == (
+        "Paramètres inactifs (variance du gradient < 10⁻¹²) : 12 sur 36 (33,3 %)."
+    )

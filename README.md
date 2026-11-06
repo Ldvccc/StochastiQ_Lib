@@ -61,13 +61,17 @@ from stochastiq import circuit_stats
 print(circuit_stats(qc))  # n_qubits, n_parameters, depth, n_two_qubit_gates, gate_counts
 ```
 
-Variance du gradient du premier paramètre (détection de plateaux stériles, coût ⟨Z₀⟩) :
+Variance du gradient (détection de plateaux stériles), calculée pour chaque paramètre par la règle du décalage de paramètre puis moyennée sur tous les paramètres. Coût `"Z0"` (⟨Z⟩ sur le qubit 0, local, par défaut) ou `"Zmean"` (moyenne des ⟨Z⟩ sur tous les qubits) :
 
 ```python
-from stochastiq import gradient_variance
+from stochastiq import gradient_variance, gradient_variance_details
 
 print(gradient_variance(qc, n_samples=200, seed=0))
+details = gradient_variance_details(qc, observable="Zmean", seed=0)
+# mean_variance, variance_per_parameter, n_inactive_parameters, inactive_fraction
 ```
+
+Un paramètre est inactif si la variance de son gradient est inférieure à 1e-12 (RZ appliqué à |0⟩, paramètre hors du cône causal de l'observable).
 
 Comparaison de plusieurs ansatz (DataFrame trié par expressibilité croissante) :
 
@@ -94,7 +98,7 @@ from stochastiq import hardware_cost
 print(hardware_cost(qc, topology="heavy_hex", seed=0))
 ```
 
-`compare(..., n_seeds=5)` répète chaque métrique sur 5 graines et ajoute les colonnes `<métrique>_std`.
+`compare(..., n_seeds=5)` répète chaque métrique sur 5 graines et ajoute les colonnes `<métrique>_std`. La colonne `inactive_fraction` donne la part des paramètres inactifs (coût `"Z0"`).
 
 ## Dashboard
 
