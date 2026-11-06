@@ -94,9 +94,11 @@ a {
 }
 
 /* Disposition */
+/* minmax(0, 1fr) : la colonne principale ne s'élargit pas à la largeur de son
+   contenu ; les tableaux défilent dans .table-wrap au lieu de faire déborder la page. */
 .app {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 240px minmax(0, 1fr);
   min-height: 100%;
 }
 
@@ -155,6 +157,7 @@ main.content {
   padding: 28px 32px;
   max-width: 1200px;
   width: 100%;
+  min-width: 0;
 }
 
 .card {
@@ -325,6 +328,20 @@ th {
   background: var(--coral-strong);
 }
 
+/* Bouton d'aide « ? » des cartes de métrique (cible de 44 px). */
+.help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--target);
+  min-height: var(--target);
+  border-radius: 50%;
+  background: var(--violet-soft);
+  color: var(--ink);
+  font-weight: 600;
+  cursor: help;
+}
+
 /* États */
 .state {
   padding: 24px;
@@ -384,7 +401,7 @@ th {
 
 @media (max-width: 800px) {
   .app {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .sidebar {

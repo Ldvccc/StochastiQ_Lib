@@ -7,7 +7,7 @@ import { ErrorState, GuardedButton } from "../components/common";
 import { useProject } from "../components/ProjectContext";
 import { CommentsPanel, CsvButton, MetricCard, NumberField, RunStatusBanner, useAnsatzCatalog } from "../components/science";
 import { formatMetric, formatPercent } from "../lib/format";
-import { LOW_SAMPLES_THRESHOLD, LOW_SAMPLES_WARNING } from "../lib/reading";
+import { ansatzLabel, LOW_SAMPLES_THRESHOLD, LOW_SAMPLES_WARNING } from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
 
 export interface DiagnosticForm {
@@ -139,7 +139,7 @@ export function DiagnosticPage() {
       {result && runParams && (
         <>
           <p className="muted">
-            Run n° {run!.id} : {runParams.ansatz}, {runParams.n_qubits} qubits, {runParams.layers} couches, {runParams.n_samples} échantillons,
+            Run n° {run!.id} : {ansatzLabel(runParams.ansatz)}, {runParams.n_qubits} qubits, {runParams.layers} couches, {runParams.n_samples} échantillons,
             graine {runParams.seed}, observable {OBSERVABLE_LABELS[runParams.observable as "Z0" | "Zall"] ?? runParams.observable}.
           </p>
           <div className="grid-3" style={{ marginBottom: 20 }}>
