@@ -6,3 +6,6 @@ __pycache__/
 build/
 dist/
 .streamlit/secrets.toml
+.env
+*.db
+*.db-journal

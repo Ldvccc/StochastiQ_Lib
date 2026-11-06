@@ -23,3 +23,7 @@ verify = ["pennylane"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Les tests de l'API (api/tests) se lancent séparément : la bibliothèque n'a aucune dépendance web.
+testpaths = ["tests"]
