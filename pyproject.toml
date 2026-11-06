@@ -19,6 +19,7 @@ dependencies = [
 dev = ["pytest"]
 examples = ["matplotlib", "jupyter"]
 dashboard = ["streamlit", "matplotlib", "pylatexenc"]
+verify = ["pennylane"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
