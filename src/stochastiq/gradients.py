@@ -108,7 +108,11 @@ def gradient_variance_details(
 
     Un paramètre est inactif si la variance de son gradient est inférieure à
     1e-12 : par exemple un RZ appliqué à |0⟩, qui n'ajoute qu'une phase, ou
-    un paramètre hors du cône causal de l'observable.
+    un paramètre hors du cône causal de l'observable. La moyenne sur tous
+    les paramètres (``mean_variance``) baisse mécaniquement quand la part de
+    paramètres inactifs augmente (dilution) ; la moyenne sur les seuls
+    paramètres actifs (``active_mean_variance``) isole le signal lié au
+    plateau stérile.
 
     Limite : la règle du décalage n'est exacte que pour des rotations RX, RY
     ou RZ dont l'angle est un paramètre seul, chaque paramètre n'étant
@@ -130,6 +134,8 @@ def gradient_variance_details(
     --------
     dict
         ``mean_variance`` (moyenne des variances sur tous les paramètres),
+        ``active_mean_variance`` (moyenne sur les seuls paramètres actifs,
+        variance >= 1e-12 ; ``nan`` s'il n'y en a aucun),
         ``variance_per_parameter`` (tableau, dans l'ordre de
         ``ansatz.parameters``), ``n_inactive_parameters`` et
         ``inactive_fraction``.
@@ -162,9 +168,11 @@ def gradient_variance_details(
         gradients[start : start + chunk] = (costs[:, 0::2] - costs[:, 1::2]) / 2
 
     variances = gradients.var(axis=0)
-    n_inactive = int(np.sum(variances < INACTIVE_THRESHOLD))
+    active = variances >= INACTIVE_THRESHOLD
+    n_inactive = int(np.sum(~active))
     return {
         "mean_variance": float(variances.mean()),
+        "active_mean_variance": float(variances[active].mean()) if active.any() else float("nan"),
         "variance_per_parameter": variances,
         "n_inactive_parameters": n_inactive,
         "inactive_fraction": n_inactive / n_params,
