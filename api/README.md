@@ -54,3 +54,29 @@ Variables d'environnement, ou fichier `.env` dans le dossier de lancement (voir 
 ## Rôles
 
 Les rôles sont ordonnés : `viewer` < `editor` < `key_manager` < `owner`. La matrice des droits est servie par `GET /roles`. Le titre d'un membre (CEO, CTO...) est une simple étiquette, sans effet sur les droits. Le dernier propriétaire d'un projet ne peut être ni rétrogradé ni retiré.
+
+## Runs
+
+`POST /projects/{id}/runs` (rôle `editor` au moins) enregistre un calcul et répond 202 avec le run en statut `pending`. Suivez ensuite son statut avec `GET /projects/{id}/runs/{run_id}` : `pending`, puis `running`, puis `done` ou `failed`. Types de calcul (`kind`) :
+
+| `kind` | Paramètres principaux | Résultat |
+|---|---|---|
+| `diagnostic` | `ansatz`, `n_qubits`, `layers`, `n_samples`, `seed`, `observable` (`Z0`, `Zmean`, `Zall`) | expressibilité, intrication, variance du gradient (moyenne, active, part d'inactifs), statistiques, histogramme des fidélités |
+| `compare` | liste `ansatz`, `n_qubits`, `layers`, `n_samples`, `n_seeds`, `seed` | lignes de `compare(...)` avec l'indicateur `pareto` |
+| `scaling` | `ansatz` (1 à 4), `qubit_min`, `qubit_max`, `layers`, `layers_mode`, `n_samples`, `observable` ou `compare_observables`, `seed` | séries par ansatz et observable, ajustements `fit_decay` (actifs et tous) |
+| `hardware` | `ansatz`, `n_qubits`, `layers`, `topology`, `seed` | `hardware_cost(...)` |
+
+Limites validées par l'API : qubits de 2 à 8, couches de 1 à 8, échantillons de 50 à 5000, graines (`n_seeds`) de 1 à 10, 2 runs en cours au plus par utilisateur (429 au-delà), durée maximale de 10 minutes.
+
+Exécution : au plus 2 calculs tournent en même temps. Chaque run s'exécute dans son propre `ProcessPoolExecutor` à un seul worker, pour qu'un run qui dépasse la durée maximale puisse être arrêté sans toucher aux autres. Au démarrage, l'API passe en `failed` les runs restés `pending` ou `running`, avec un message explicite. Il n'y a pas de file de jobs externe : un redémarrage de l'API interrompt les calculs en cours.
+
+## Collaboration
+
+- **Commentaires** : `POST/GET /projects/{id}/runs/{run_id}/comments`, ouverts aux lecteurs.
+- **Fil d'activité** : `GET /projects/{id}/activity?limit=&offset=`. Il enregistre le lancement et la fin des runs, les commentaires, les circuits épinglés, les invitations, les adhésions, les changements de rôle et les machines ajoutées.
+- **Circuits épinglés** : `GET/POST /projects/{id}/pins` et `DELETE /projects/{id}/pins/{pin_id}`, à partir du rôle `editor`.
+- **Machines** : `GET/POST /projects/{id}/machines` et `DELETE /projects/{id}/machines/{machine_id}`, à partir du rôle `key_manager`. Une entrée ne contient qu'un fournisseur et un libellé. **Aucune clé n'est stockée** : un champ `secret`, `api_key`, `token`, `key` ou `password` est refusé (422). La vraie gestion des clés de machines est hors périmètre de ce prototype.
+
+## Catalogue
+
+`GET /ansatz`, `GET /ansatz/{name}/structure?n_qubits=&layers=` (circuit en colonnes de portes, pour le dessin) et `GET /topologies`. Ces routes sont publiques.
