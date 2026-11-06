@@ -63,7 +63,9 @@ def run_hardware(name: str, n_qubits: int, layers: int, topology: str, seed: int
 def circuit_inputs(prefix: str):
     """Choix commun de l'ansatz, du nombre de qubits et de couches."""
     c1, c2, c3 = st.columns(3)
-    name = c1.selectbox("Ansatz", list_ansatz(), key=f"{prefix}_ansatz")
+    name = c1.selectbox(
+        "Ansatz", list_ansatz(), format_func=ui.ansatz_label, key=f"{prefix}_ansatz"
+    )
     n_qubits = c2.slider("Qubits", 2, 8, 4, key=f"{prefix}_qubits")
     layers = c3.slider("Couches", 1, 8, 3, key=f"{prefix}_layers")
     return name, n_qubits, layers
@@ -93,7 +95,7 @@ with tab_diag:
     if "diagnostic" in st.session_state:
         params, result = st.session_state["diagnostic"]
         st.caption(
-            f"{params[0]}, {params[1]} qubits, {params[2]} couches, "
+            f"{ui.ansatz_label(params[0])}, {params[1]} qubits, {params[2]} couches, "
             f"{params[3]} échantillons, graine {params[4]}."
         )
         cards = st.columns(3)
@@ -123,7 +125,13 @@ with tab_diag:
 
 with tab_compare:
     st.header("Comparateur")
-    names = st.multiselect("Ansatz", list_ansatz(), default=list_ansatz(), key="cmp_ansatz")
+    names = st.multiselect(
+        "Ansatz",
+        list_ansatz(),
+        default=list_ansatz(),
+        format_func=ui.ansatz_label,
+        key="cmp_ansatz",
+    )
     c1, c2 = st.columns(2)
     cmp_qubits = c1.slider("Qubits", 2, 8, 4, key="cmp_qubits")
     cmp_layers = c2.slider("Couches", 1, 8, 3, key="cmp_layers")

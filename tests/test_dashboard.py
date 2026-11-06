@@ -66,7 +66,7 @@ def test_avertissement_peu_d_echantillons():
 def test_comparateur_rappelle_les_parametres():
     at = AppTest.from_file(APP, default_timeout=60)
     at.run()
-    at.multiselect(key="cmp_ansatz").set_value(["ry_linear", "ry_full"])
+    at.multiselect(key="cmp_ansatz").set_value(["hardware_efficient", "all_to_all"])
     at.slider(key="cmp_qubits").set_value(2)
     at.slider(key="cmp_layers").set_value(1)
     at.number_input(key="cmp_samples").set_value(50)
@@ -93,7 +93,7 @@ def _compare_df(with_std: bool) -> pd.DataFrame:
             "entangling_capability": [0.836, 0.836, 0.679],
             "gradient_variance": [0.030, 0.030, 0.229],
         },
-        index=["strongly_entangling", "ryrz_circular", "ry_linear"],
+        index=["strongly_entangling", "data_reuploading", "hardware_efficient"],
     )
     if with_std:
         for metric in ui.METRICS:
@@ -140,14 +140,14 @@ def test_axes_en_notation_francaise():
 
 def test_compare_table_sans_std():
     table = ui.compare_table(_compare_df(with_std=False))
-    assert list(table.index) == ["strongly_entangling", "ryrz_circular", "ry_linear"]
-    assert table.loc["ry_linear", "Expressibilité"] == "0,1955"
-    assert "±" not in table.loc["ry_linear", "Intrication"]
+    assert list(table.index) == ["StronglyEntangling", "DataReuploading", "HardwareEfficient"]
+    assert table.loc["HardwareEfficient", "Expressibilité"] == "0,1955"
+    assert "±" not in table.loc["HardwareEfficient", "Intrication"]
 
 
 def test_compare_table_avec_std():
     table = ui.compare_table(_compare_df(with_std=True))
-    assert table.loc["ry_linear", "Expressibilité"] == "0,1955 ± 0,0010"
+    assert table.loc["HardwareEfficient", "Expressibilité"] == "0,1955 ± 0,0010"
     assert list(table.columns) == [ui.METRIC_LABELS[k] for k in ui.METRIC_LABELS]
 
 
@@ -267,5 +267,35 @@ def test_schema_de_circuit_style_accepte_par_qiskit():
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        fig = ui.circuit_figure(build_ansatz("ryrz_linear", 4, 3))
+        fig = ui.circuit_figure(build_ansatz("hardware_efficient", 4, 3))
     assert fig.get_facecolor()[:3] == (1.0, 1.0, 1.0)
+
+
+def test_noms_d_affichage_des_ansatz():
+    from stochastiq import list_ansatz
+
+    assert [ui.ansatz_label(name) for name in list_ansatz()] == [
+        "BasicEntangler",
+        "StronglyEntangling",
+        "HardwareEfficient",
+        "RotationOnly",
+        "AllToAll",
+        "BrickWall",
+        "DataReuploading",
+    ]
+
+
+def test_phrase_de_lecture_avec_noms_d_affichage():
+    df = _metrics_df(expr=[0.01, 0.05], ent=[0.9, 0.6])
+    df.index = ["all_to_all", "rotation_only"]
+    sentence = ui.reading_sentence(df)
+    assert "« AllToAll »" in sentence
+    assert "all_to_all" not in sentence
+
+
+def test_listes_deroulantes_en_noms_d_affichage():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    assert at.selectbox(key="diag_ansatz").value == "basic_entangler"
+    assert at.selectbox(key="diag_ansatz").format_func("brick_wall") == "BrickWall"
+    assert "HardwareEfficient" in at.multiselect(key="cmp_ansatz").options

@@ -29,13 +29,20 @@ print(expressibility(ansatz, seed=0))  # plus bas = plus expressif
 
 ## Autres fonctionnalités
 
-Ansatz prédéfinis (placeholders, voir `list_ansatz()`) :
+Les 7 ansatz de QCBM Lab (`basic_entangler`, `strongly_entangling`, `hardware_efficient`, `rotation_only`, `all_to_all`, `brick_wall`, `data_reuploading`), définis d'après le rapport QCBM Lab, section 2.4 (voir la docstring de `stochastiq.ansatz`) :
 
 ```python
 from stochastiq import build_ansatz, list_ansatz
 
 print(list_ansatz())
-qc = build_ansatz("ry_linear", n_qubits=4, layers=3)
+qc = build_ansatz("hardware_efficient", n_qubits=4, layers=3)
+```
+
+Leur vérification contre PennyLane (`BasicEntanglerLayers`, `StronglyEntanglingLayers` et des circuits de référence écrits avec des portes PennyLane) demande l'option `verify` :
+
+```bash
+pip install -e ".[dev,verify]"
+pytest tests/test_ansatz_pennylane.py
 ```
 
 Capacité d'intrication (Meyer-Wallach moyenne, entre 0 et 1) :
