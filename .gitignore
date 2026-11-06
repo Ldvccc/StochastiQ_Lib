@@ -9,3 +9,5 @@ dist/
 .env
 *.db
 *.db-journal
+web/test-results/
+web/playwright-report/

@@ -24,13 +24,13 @@ export function MetricCard({ label, value, help, detail }: { label: string; valu
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <span className="muted">{label}</span>
         <span
-          className="pill"
+          className="help"
           tabIndex={0}
           role="note"
           title={help}
           aria-label={`Explication : ${help}`}
           aria-describedby={id}
-          style={{ cursor: "help" }}
+
         >
           ?
         </span>
