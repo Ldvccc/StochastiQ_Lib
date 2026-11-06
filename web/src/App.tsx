@@ -1,7 +1,8 @@
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AuthProvider } from "./auth/AuthContext";
-import { Empty } from "./components/common";
+import { Loading } from "./components/common";
 import { AppLayout, ProjectLayout } from "./components/Layout";
 import { LoginPage, RegisterPage, RequireAuth } from "./pages/AuthPages";
 import { InvitationPage } from "./pages/InvitationPage";
@@ -9,13 +10,16 @@ import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { TeamPage } from "./pages/TeamPage";
 
-function Pending({ name }: { name: string }) {
-  return (
-    <>
-      <h1>{name}</h1>
-      <Empty>Écran prévu au jalon suivant (M4).</Empty>
-    </>
-  );
+// Écrans scientifiques chargés à la demande : ils embarquent les graphiques (Recharts).
+const DiagnosticPage = lazy(() => import("./pages/DiagnosticPage").then((m) => ({ default: m.DiagnosticPage })));
+const ComparePage = lazy(() => import("./pages/ComparePage").then((m) => ({ default: m.ComparePage })));
+const AnsatzPage = lazy(() => import("./pages/AnsatzPage").then((m) => ({ default: m.AnsatzPage })));
+const BarrenPage = lazy(() => import("./pages/BarrenPage").then((m) => ({ default: m.BarrenPage })));
+const JobsPage = lazy(() => import("./pages/JobsPage").then((m) => ({ default: m.JobsPage })));
+const RunDetailPage = lazy(() => import("./pages/JobsPage").then((m) => ({ default: m.RunDetailPage })));
+
+function Screen({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<Loading label="Chargement de l'écran" />}>{children}</Suspense>;
 }
 
 export function AppRoutes() {
@@ -44,12 +48,12 @@ export function AppRoutes() {
         >
           <Route index element={<ProjectPage />} />
           <Route path="equipe" element={<TeamPage />} />
-          <Route path="diagnostic" element={<Pending name="Diagnostic" />} />
-          <Route path="comparateur" element={<Pending name="Comparateur" />} />
-          <Route path="ansatz" element={<Pending name="Ansatz" />} />
-          <Route path="plateau-sterile" element={<Pending name="Plateau stérile" />} />
-          <Route path="jobs" element={<Pending name="Jobs et matériel" />} />
-          <Route path="jobs/:runId" element={<Pending name="Détail du run" />} />
+          <Route path="diagnostic" element={<Screen><DiagnosticPage /></Screen>} />
+          <Route path="comparateur" element={<Screen><ComparePage /></Screen>} />
+          <Route path="ansatz" element={<Screen><AnsatzPage /></Screen>} />
+          <Route path="plateau-sterile" element={<Screen><BarrenPage /></Screen>} />
+          <Route path="jobs" element={<Screen><JobsPage /></Screen>} />
+          <Route path="jobs/:runId" element={<Screen><RunDetailPage /></Screen>} />
         </Route>
         <Route path="*" element={<Navigate to="/projects" replace />} />
       </Routes>
