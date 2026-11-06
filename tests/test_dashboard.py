@@ -31,8 +31,9 @@ def test_app_demarre_sans_exception(app):
 
 
 def test_chaque_onglet_s_affiche(app):
-    assert [tab.label for tab in app.tabs] == ["Diagnostic", "Comparateur", "Ansatz", "Matériel"]
-    for tab, title in zip(app.tabs, ["Diagnostic", "Comparateur", "Ansatz", "Matériel"]):
+    titles = ["Diagnostic", "Comparateur", "Ansatz", "Matériel", "Plateau stérile"]
+    assert [tab.label for tab in app.tabs] == titles
+    for tab, title in zip(app.tabs, titles):
         assert tab.header[0].value == title
     assert not app.error
 
@@ -76,6 +77,35 @@ def test_comparateur_rappelle_les_parametres():
     assert not at.exception
     captions = [caption.value for caption in at.tabs[1].caption]
     assert ui.compare_params_line(50, 0, 2) in captions
+    assert any("front de Pareto" in m.value for m in at.tabs[1].markdown)
+
+
+def test_etude_plateau_sterile():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    at.multiselect(key="bp_ansatz").set_value(["hardware_efficient"])
+    at.slider(key="bp_qubits").set_value((2, 3))
+    at.number_input(key="bp_samples").set_value(20)
+    at.button(key="bp_run").click().run()
+    assert not at.exception
+    assert not at.error
+    tab = at.tabs[4]
+    assert tab.table[0].value.index.tolist() == ["HardwareEfficient"]
+    # 2 points seulement : pas d'ajustement possible.
+    assert tab.table[0].value.iloc[0, 0] == "données insuffisantes"
+    assert any("« HardwareEfficient » : données insuffisantes" in m.value for m in tab.markdown)
+    # Relance identique : résultat servi par le cache, sans erreur de rejeu.
+    at.button(key="bp_run").click().run()
+    assert not at.exception
+    assert at.tabs[4].table[0].value.index.tolist() == ["HardwareEfficient"]
+
+
+def test_avertissement_plage_longue():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    assert not at.tabs[4].info
+    at.slider(key="bp_qubits").set_value((2, 8)).run()
+    assert [info.value for info in at.tabs[4].info] == ["Plage au-delà de 6 qubits : calcul plus long."]
 
 
 def test_compare_params_line():
@@ -321,3 +351,75 @@ def test_inactive_line():
     assert ui.inactive_line(details) == (
         "Paramètres inactifs (variance du gradient < 10⁻¹²) : 12 sur 36 (33,3 %)."
     )
+
+
+def _pareto_df(expr, grad, std=False) -> pd.DataFrame:
+    df = pd.DataFrame(
+        {"expressibility": expr, "gradient_variance": grad},
+        index=["all_to_all", "brick_wall", "rotation_only"][: len(expr)],
+    )
+    if std:
+        df["expressibility_std"] = 0.001
+        df["gradient_variance_std"] = 0.001
+    return df
+
+
+def test_phrase_pareto_un_seul_ansatz():
+    # all_to_all est meilleur sur les deux critères.
+    sentence = ui.pareto_sentence(_pareto_df([0.01, 0.03, 0.7], [0.05, 0.04, 0.03]))
+    assert sentence.startswith("Le front de Pareto ne contient que « AllToAll ».")
+    assert "un circuit du front n'est battu par aucun autre sur les deux critères" in sentence.lower()
+    assert "BrickWall" not in sentence
+
+
+def test_phrase_pareto_plusieurs_ansatz():
+    sentence = ui.pareto_sentence(_pareto_df([0.01, 0.03, 0.7], [0.02, 0.04, 0.12]))
+    assert "« AllToAll », « BrickWall » et « RotationOnly »" in sentence
+    assert not any(ch.isdigit() for ch in sentence)
+
+
+def test_figures_pareto_et_echelle():
+    fig = ui.pareto_figure(_pareto_df([0.01, 0.03, 0.7], [0.05, 0.04, 0.03], std=True))
+    ax = fig.axes[0]
+    assert ax.get_xlabel() == "Expressibilité (plus bas = plus expressif)"
+    assert ax.xaxis.get_major_formatter()(0.25, 0) == "0,25"
+    results = {
+        "hardware_efficient": pd.DataFrame({"n_qubits": [2, 3, 4], "mean_variance": [0.1, 0.05, 0.02]}),
+        "data_reuploading": pd.DataFrame({"n_qubits": [2, 3, 4], "mean_variance": [0.08, 0.04, 0.03]}),
+    }
+    fig = ui.scaling_figure(results)
+    ax = fig.axes[0]
+    assert ax.get_yscale() == "log"
+    assert [line.get_marker() for line in ax.get_lines()] == ["o", "s"]
+    assert ax.yaxis.get_major_formatter()(0.01, 0) == "0,01"
+    assert ax.yaxis.get_major_formatter()(1, 0) == "1"
+
+
+def test_phrase_decroissance_nette():
+    fit = {"factor_per_qubit": 0.5, "r2": 0.99, "n_points": 5}
+    sentence = ui.scaling_sentence("hardware_efficient", fit)
+    assert "la variance est multipliée par 0,50 à chaque qubit ajouté" in sentence
+    assert "R² = 0,990" in sentence
+    assert "plateau stérile" in sentence
+
+
+@pytest.mark.parametrize(
+    "fit",
+    [
+        {"factor_per_qubit": 0.9, "r2": 0.99, "n_points": 5},  # décroissance lente
+        {"factor_per_qubit": 0.5, "r2": 0.6, "n_points": 5},  # ajustement médiocre
+    ],
+)
+def test_phrase_decroissance_non_nette(fit):
+    sentence = ui.scaling_sentence("data_reuploading", fit)
+    assert "pas de décroissance exponentielle nette sur cette plage" in sentence
+    assert "plateau stérile" not in sentence
+
+
+def test_phrase_et_tableau_donnees_insuffisantes():
+    fit = {"factor_per_qubit": None, "r2": None, "n_points": 2}
+    assert "données insuffisantes" in ui.scaling_sentence("brick_wall", fit)
+    table = ui.scaling_table({"brick_wall": fit, "all_to_all": {"factor_per_qubit": 0.71, "r2": 0.95, "n_points": 4}})
+    assert table.index.tolist() == ["BrickWall", "AllToAll"]
+    assert table["Facteur par qubit ajouté"].tolist() == ["données insuffisantes", "×0,71"]
+    assert table["R²"].tolist() == ["n/a", "0,950"]

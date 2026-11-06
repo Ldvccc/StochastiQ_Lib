@@ -15,7 +15,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, NullFormatter
+
+from stochastiq import pareto_front
 
 SURFACE = "#F6F5FB"
 CARD = "#FFFFFF"
@@ -318,6 +320,78 @@ def hardware_sentence(cost: dict) -> str:
     return sentence
 
 
+def pareto_mask(df: pd.DataFrame) -> list[bool]:
+    """Front de Pareto du tableau ``compare`` : expressibilité basse, variance du gradient haute."""
+    points = list(zip(df["expressibility"], df["gradient_variance"]))
+    return pareto_front(points, minimize_x=True, maximize_y=True)
+
+
+def pareto_sentence(df: pd.DataFrame) -> str:
+    """Rédige la phrase de lecture du nuage expressibilité / variance du gradient."""
+    if df.empty:
+        return ""
+    names = [ansatz_label(name) for name, on_front in zip(df.index, pareto_mask(df)) if on_front]
+    quoted = [f"« {name} »" for name in names]
+    if len(quoted) == 1:
+        first = f"Le front de Pareto ne contient que {quoted[0]}."
+    else:
+        listed = ", ".join(quoted[:-1]) + " et " + quoted[-1]
+        first = f"Le front de Pareto contient {listed}."
+    return (
+        f"{first} Un circuit du front n'est battu par aucun autre sur les deux critères "
+        "(expressibilité plus basse et variance du gradient plus élevée)."
+    )
+
+
+LAYERS_MODE_LABELS = {"fixed": "Fixe", "linear": "Proportionnel aux qubits"}
+
+# Seuils au-delà desquels la décroissance est qualifiée de plateau stérile.
+BARREN_FACTOR = 0.8
+BARREN_R2 = 0.9
+
+
+def format_factor(fit: dict) -> str:
+    """Formate le facteur par qubit ajouté d'un résultat ``fit_decay``."""
+    if fit["factor_per_qubit"] is None:
+        return "données insuffisantes"
+    return format_overhead(fit["factor_per_qubit"])
+
+
+def scaling_table(fits: dict[str, dict]) -> pd.DataFrame:
+    """Tableau des ajustements ``fit_decay`` par ansatz."""
+    return pd.DataFrame(
+        {
+            "Facteur par qubit ajouté": [format_factor(fit) for fit in fits.values()],
+            "R²": [
+                "n/a" if fit["r2"] is None else format_fr(fit["r2"], 3) for fit in fits.values()
+            ],
+        },
+        index=pd.Index([ansatz_label(name) for name in fits], name="Ansatz"),
+    )
+
+
+def scaling_sentence(name: str, fit: dict) -> str:
+    """Phrase de lecture factuelle d'un ajustement ``fit_decay``.
+
+    Le terme « plateau stérile » n'est employé que si le facteur par qubit
+    est inférieur à 0,8 avec un R² supérieur à 0,9.
+    """
+    label = f"« {ansatz_label(name)} »"
+    factor, r2 = fit["factor_per_qubit"], fit["r2"]
+    if factor is None:
+        return (
+            f"{label} : données insuffisantes pour un ajustement "
+            f"({fit['n_points']} point(s) valide(s), 3 nécessaires)."
+        )
+    sentence = (
+        f"{label} : la variance est multipliée par {format_fr(factor, 2)} à chaque qubit "
+        f"ajouté (ajustement exponentiel, R² = {format_fr(r2, 3)})"
+    )
+    if factor < BARREN_FACTOR and r2 > BARREN_R2:
+        return sentence + " ; décroissance exponentielle nette, signe d'un plateau stérile."
+    return sentence + " ; pas de décroissance exponentielle nette sur cette plage."
+
+
 # Composants graphiques
 
 
@@ -429,5 +503,78 @@ def expressibility_figure(df: pd.DataFrame):
     ax.tick_params(axis="x", rotation=30)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment("right")
+    fig.tight_layout()
+    return fig
+
+
+def _log_tick(value: float, _) -> str:
+    if value <= 0:
+        return ""
+    decimals = max(0, -int(math.floor(math.log10(value))))
+    return format_fr(value, decimals)
+
+
+# Graduations d'un axe logarithmique, en écriture décimale française.
+FRENCH_LOG_TICKS = FuncFormatter(_log_tick)
+
+
+def pareto_figure(df: pd.DataFrame):
+    """Nuage expressibilité / variance moyenne du gradient, front de Pareto en violet plein."""
+    fig, ax = _figure(height=3.8)
+    on_front = np.array(pareto_mask(df))
+    x, y = df["expressibility"].to_numpy(), df["gradient_variance"].to_numpy()
+    if "expressibility_std" in df.columns:
+        ax.errorbar(
+            x,
+            y,
+            xerr=df["expressibility_std"],
+            yerr=df["gradient_variance_std"],
+            fmt="none",
+            ecolor=TEXT_MUTED,
+            elinewidth=0.8,
+            capsize=3,
+            zorder=1,
+        )
+    for mask, face, label in [(on_front, VIOLET, "Front de Pareto"), (~on_front, VIOLET_LIGHT, "Autres")]:
+        if mask.any():
+            ax.scatter(
+                x[mask], y[mask], s=60, color=face, edgecolors=VIOLET, linewidths=1.2,
+                label=label, zorder=2,
+            )
+    for name, xi, yi in zip(df.index, x, y):
+        ax.annotate(
+            ansatz_label(name), (xi, yi), xytext=(6, 4), textcoords="offset points",
+            fontsize=8, color=TEXT,
+        )
+    ax.set_xlabel("Expressibilité (plus bas = plus expressif)")
+    ax.set_ylabel("Variance moyenne du gradient")
+    ax.xaxis.set_major_formatter(FRENCH_TICKS)
+    ax.yaxis.set_major_formatter(FRENCH_TICKS)
+    ax.legend(frameon=False, fontsize=8, labelcolor=TEXT_MUTED)
+    fig.tight_layout()
+    return fig
+
+
+# Une couleur et un marqueur par courbe, pour ne pas distinguer par la seule couleur.
+SCALING_STYLES = [(VIOLET, "o"), (TEXT, "s"), (CORAL, "^"), (TEXT_MUTED, "D")]
+
+
+def scaling_figure(results: dict[str, pd.DataFrame]):
+    """Variance moyenne du gradient en fonction du nombre de qubits, échelle log."""
+    fig, ax = _figure(height=3.6)
+    for (name, df), (color, marker) in zip(results.items(), SCALING_STYLES):
+        valid = df["mean_variance"] > 0
+        ax.plot(
+            df.loc[valid, "n_qubits"], df.loc[valid, "mean_variance"], color=color,
+            marker=marker, linewidth=1.6, markersize=6, label=ansatz_label(name),
+        )
+    ax.set_yscale("log")
+    ax.set_xlabel("Nombre de qubits")
+    ax.set_ylabel("Variance moyenne du gradient")
+    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    ax.xaxis.set_major_formatter(FRENCH_TICKS)
+    ax.yaxis.set_major_formatter(FRENCH_LOG_TICKS)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+    ax.legend(frameon=False, fontsize=8, labelcolor=TEXT_MUTED)
     fig.tight_layout()
     return fig

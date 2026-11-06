@@ -20,6 +20,8 @@ from stochastiq import (  # noqa: E402
     entangling_capability,
     expressibility,
     fidelity_histogram,
+    fit_decay,
+    gradient_scaling,
     gradient_variance_details,
     hardware_cost,
     list_ansatz,
@@ -60,6 +62,33 @@ def run_hardware(name: str, n_qubits: int, layers: int, topology: str, seed: int
     return hardware_cost(build_ansatz(name, n_qubits, layers), topology=topology, seed=seed)
 
 
+@st.cache_data(show_spinner=False)
+def run_scaling(
+    name: str,
+    q_min: int,
+    q_max: int,
+    layers: int,
+    layers_mode: str,
+    n_samples: int,
+    seed: int,
+):
+    # La barre est créée et vidée dans la fonction : Streamlit rejoue ces
+    # éléments lors d'un accès au cache, sans référence à un bloc extérieur.
+    text = f"Étude en cours : {ui.ansatz_label(name)}"
+    bar = st.progress(0.0, text=text)
+    df = gradient_scaling(
+        name,
+        range(q_min, q_max + 1),
+        layers=layers,
+        layers_mode=layers_mode,
+        n_samples=n_samples,
+        seed=seed,
+        callback=lambda done, total: bar.progress(done / total, text=text),
+    )
+    bar.empty()
+    return df
+
+
 def circuit_inputs(prefix: str):
     """Choix commun de l'ansatz, du nombre de qubits et de couches."""
     c1, c2, c3 = st.columns(3)
@@ -71,8 +100,8 @@ def circuit_inputs(prefix: str):
     return name, n_qubits, layers
 
 
-tab_diag, tab_compare, tab_ansatz, tab_hardware = st.tabs(
-    ["Diagnostic", "Comparateur", "Ansatz", "Matériel"]
+tab_diag, tab_compare, tab_ansatz, tab_hardware, tab_barren = st.tabs(
+    ["Diagnostic", "Comparateur", "Ansatz", "Matériel", "Plateau stérile"]
 )
 
 with tab_diag:
@@ -159,6 +188,11 @@ with tab_compare:
         st.table(ui.compare_table(df))
         st.caption(ui.compare_params_line(params[3], params[4], params[5]))
         st.markdown(ui.reading_sentence(df))
+        st.subheader("Expressibilité et variance du gradient")
+        fig = ui.pareto_figure(df)
+        st.pyplot(fig)
+        plt.close(fig)
+        st.markdown(ui.pareto_sentence(df))
         fig = ui.expressibility_figure(df)
         st.pyplot(fig)
         plt.close(fig)
@@ -208,3 +242,65 @@ with tab_hardware:
         "Transpilation hors ligne avec Qiskit, vers les portes cx, rz, sx et x : "
         "aucune connexion à une vraie machine."
     )
+
+with tab_barren:
+    st.header("Plateau stérile")
+    bp_names = st.multiselect(
+        "Ansatz (4 au plus)",
+        list_ansatz(),
+        default=["hardware_efficient", "strongly_entangling", "data_reuploading"],
+        format_func=ui.ansatz_label,
+        max_selections=4,
+        key="bp_ansatz",
+    )
+    c1, c2, c3 = st.columns(3)
+    bp_qubits = c1.slider("Qubits (min et max)", 2, 8, (2, 6), key="bp_qubits")
+    bp_layers = c2.slider("Couches", 1, 8, 3, key="bp_layers")
+    bp_mode = c3.radio(
+        "Mode de couches",
+        list(ui.LAYERS_MODE_LABELS),
+        format_func=ui.LAYERS_MODE_LABELS.get,
+        key="bp_mode",
+    )
+    c4, c5 = st.columns(2)
+    bp_samples = c4.number_input("Échantillons", 10, 2000, 100, step=10, key="bp_samples")
+    bp_seed = c5.number_input("Graine", 0, 1_000_000, 0, key="bp_seed")
+    if bp_qubits[1] > 6:
+        st.info("Plage au-delà de 6 qubits : calcul plus long.")
+
+    if st.button("Lancer l'étude", type="primary", key="bp_run"):
+        if not bp_names:
+            st.error("Sélectionnez au moins un ansatz.")
+        else:
+            try:
+                st.session_state["barren"] = {
+                    bp_name: run_scaling(
+                        bp_name,
+                        bp_qubits[0],
+                        bp_qubits[1],
+                        bp_layers,
+                        bp_mode,
+                        int(bp_samples),
+                        int(bp_seed),
+                    )
+                    for bp_name in bp_names
+                }
+            except ValueError as error:
+                st.error(str(error))
+
+    if "barren" in st.session_state:
+        results = st.session_state["barren"]
+        fig = ui.scaling_figure(results)
+        st.pyplot(fig)
+        plt.close(fig)
+        fits = {
+            bp_name: fit_decay(df["n_qubits"], df["mean_variance"])
+            for bp_name, df in results.items()
+        }
+        st.table(ui.scaling_table(fits))
+        for bp_name, fit in fits.items():
+            st.markdown(ui.scaling_sentence(bp_name, fit))
+        ui.note(
+            "Résultat sur une observable locale Z0 ; il dépend de l'observable et du "
+            "nombre de couches."
+        )

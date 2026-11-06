@@ -79,3 +79,43 @@ def compare(
         rows[name] = row
     df = pd.DataFrame.from_dict(rows, orient="index")
     return df.sort_values("expressibility")
+
+
+def pareto_front(
+    points: list[tuple[float, float]],
+    minimize_x: bool = True,
+    maximize_y: bool = True,
+) -> list[bool]:
+    """Indique, pour chaque point (x, y), s'il appartient au front de Pareto.
+
+    Un point est dominé si un autre point est meilleur ou égal sur x et sur
+    y, et strictement meilleur sur au moins l'un des deux. Les points
+    identiques ne se dominent pas.
+
+    Paramètres
+    ----------
+    points : liste de (x, y)
+        Points à évaluer.
+    minimize_x : bool
+        True si un x plus petit est meilleur.
+    maximize_y : bool
+        True si un y plus grand est meilleur.
+
+    Retourne
+    --------
+    list[bool]
+        True pour chaque point non dominé, dans l'ordre de ``points``.
+    """
+    # On se ramène à deux critères à minimiser.
+    costs = [
+        (x if minimize_x else -x, -y if maximize_y else y) for x, y in points
+    ]
+    front = []
+    for i, (xi, yi) in enumerate(costs):
+        dominated = any(
+            xj <= xi and yj <= yi and (xj < xi or yj < yi)
+            for j, (xj, yj) in enumerate(costs)
+            if j != i
+        )
+        front.append(not dominated)
+    return front

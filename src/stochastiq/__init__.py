@@ -1,8 +1,9 @@
 from .ansatz import build_ansatz, list_ansatz
-from .compare import compare
+from .compare import compare, pareto_front
 from .gradients import gradient_variance, gradient_variance_details
 from .hardware import hardware_cost, list_topologies
 from .metrics import entangling_capability, expressibility, fidelity_histogram
+from .scaling import fit_decay, gradient_scaling
 from .stats import circuit_stats
 
 __all__ = [
@@ -17,5 +18,8 @@ __all__ = [
     "build_ansatz",
     "list_ansatz",
     "compare",
+    "pareto_front",
+    "gradient_scaling",
+    "fit_decay",
 ]
 __version__ = "0.1.0"
