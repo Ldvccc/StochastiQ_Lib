@@ -127,3 +127,23 @@ def test_moyenne_active_nan_sans_parametre_actif():
     details = gradient_variance_details(qc, n_samples=20, seed=0)
     assert details["n_inactive_parameters"] == 1
     assert np.isnan(details["active_mean_variance"])
+
+
+def test_zall_concorde_avec_sparsepauliop():
+    qc = build_ansatz("hardware_efficient", 3, 2)
+    op = SparsePauliOp("Z" * qc.num_qubits)
+
+    def cost(theta):
+        return Statevector(qc.assign_parameters(theta)).expectation_value(op).real
+
+    rng = np.random.default_rng(6)
+    thetas = rng.uniform(0, 2 * np.pi, (15, qc.num_parameters))
+    gradients = np.empty_like(thetas)
+    for i, theta in enumerate(thetas):
+        for p in range(qc.num_parameters):
+            shift = np.zeros(qc.num_parameters)
+            shift[p] = np.pi / 2
+            gradients[i, p] = (cost(theta + shift) - cost(theta - shift)) / 2
+    details = gradient_variance_details(qc, n_samples=15, observable="Zall", seed=6)
+    np.testing.assert_allclose(details["variance_per_parameter"], gradients.var(axis=0), atol=1e-12)
+    assert gradient_variance(qc, n_samples=15, observable="Zall", seed=6) == details["mean_variance"]

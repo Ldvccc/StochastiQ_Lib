@@ -87,3 +87,13 @@ def test_gradient_scaling_erreurs():
         gradient_scaling("hardware_efficient", range(2, 4), layers_mode="inconnu")
     with pytest.raises(ValueError, match="vide"):
         gradient_scaling("hardware_efficient", range(2, 2))
+
+
+def test_cout_global_decroit_plus_vite_que_le_cout_local():
+    factors = {}
+    for observable in ("Z0", "Zall"):
+        df = gradient_scaling(
+            "hardware_efficient", range(2, 6), layers=3, n_samples=100, observable=observable, seed=0
+        )
+        factors[observable] = fit_decay(df["n_qubits"], df["active_mean_variance"])["factor_per_qubit"]
+    assert factors["Zall"] < factors["Z0"]
