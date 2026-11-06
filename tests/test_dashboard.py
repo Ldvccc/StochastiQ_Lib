@@ -423,3 +423,37 @@ def test_phrase_et_tableau_donnees_insuffisantes():
     assert table.index.tolist() == ["BrickWall", "AllToAll"]
     assert table["Facteur par qubit ajouté"].tolist() == ["données insuffisantes", "×0,71"]
     assert table["R²"].tolist() == ["n/a", "0,950"]
+
+
+def test_curseur_couches_desactive_en_mode_proportionnel():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    assert not at.slider(key="bp_layers").proto.disabled
+    at.slider(key="bp_layers").set_value(5).run()
+
+    at.radio(key="bp_mode").set_value("linear").run()
+    assert at.slider(key="bp_layers").proto.disabled
+    assert ui.PROPORTIONAL_LAYERS_NOTE in [c.value for c in at.tabs[4].caption]
+
+    at.radio(key="bp_mode").set_value("fixed").run()
+    assert not at.slider(key="bp_layers").proto.disabled
+    assert at.slider(key="bp_layers").value == 5
+    assert ui.PROPORTIONAL_LAYERS_NOTE not in [c.value for c in at.tabs[4].caption]
+    assert not at.exception
+
+
+def test_phrase_rappelle_le_mode_de_couches():
+    assert ui.layers_line("fixed", 3) == "Couches : 3 (fixe)."
+    assert ui.layers_line("linear", 3) == "Couches : égales au nombre de qubits."
+
+
+def test_etude_en_mode_proportionnel_rappelle_les_couches():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    at.multiselect(key="bp_ansatz").set_value(["hardware_efficient"])
+    at.slider(key="bp_qubits").set_value((2, 3))
+    at.number_input(key="bp_samples").set_value(20)
+    at.radio(key="bp_mode").set_value("linear")
+    at.button(key="bp_run").click().run()
+    assert not at.exception
+    assert any("Couches : égales au nombre de qubits." in m.value for m in at.tabs[4].markdown)

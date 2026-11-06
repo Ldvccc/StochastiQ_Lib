@@ -345,6 +345,17 @@ def pareto_sentence(df: pd.DataFrame) -> str:
 
 LAYERS_MODE_LABELS = {"fixed": "Fixe", "linear": "Proportionnel aux qubits"}
 
+PROPORTIONAL_LAYERS_NOTE = (
+    "En mode proportionnel, le nombre de couches est égal au nombre de qubits."
+)
+
+
+def layers_line(layers_mode: str, layers: int) -> str:
+    """Rappelle le nombre de couches utilisé pour une étude ``gradient_scaling``."""
+    if layers_mode == "linear":
+        return "Couches : égales au nombre de qubits."
+    return f"Couches : {layers} (fixe)."
+
 # Seuils au-delà desquels la décroissance est qualifiée de plateau stérile.
 BARREN_FACTOR = 0.8
 BARREN_R2 = 0.9
