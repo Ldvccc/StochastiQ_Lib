@@ -15,9 +15,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
-from stochastiq import pareto_front
+from stochastiq import __version__, fit_decay, pareto_front
 
 SURFACE = "#F6F5FB"
 CARD = "#FFFFFF"
@@ -28,7 +29,7 @@ CORAL = "#D42A45"
 VIOLET_LIGHT = "#ECE9FF"
 LINE = "#E1DFEE"
 
-METRICS = ["expressibility", "entangling_capability", "gradient_variance"]
+METRICS = ["expressibility", "entangling_capability", "gradient_variance", "gradient_variance_active"]
 
 # Noms d'affichage des ansatz ; la bibliothèque garde les identifiants snake_case.
 ANSATZ_LABELS = {
@@ -56,6 +57,7 @@ METRIC_LABELS = {
     "expressibility": "Expressibilité",
     "entangling_capability": "Intrication",
     "gradient_variance": "Variance du gradient",
+    "gradient_variance_active": "Variance du gradient (actifs)",
     "inactive_fraction": "Paramètres inactifs",
 }
 
@@ -236,6 +238,43 @@ LOW_SAMPLES_WARNING = (
 )
 
 
+CSV_LABEL = "Télécharger en CSV"
+
+
+def to_csv(df: pd.DataFrame, params: dict) -> bytes:
+    """Export CSV UTF-8 : une ligne de commentaire ``#`` avec les paramètres, puis le tableau.
+
+    Séparateur virgule, point décimal, noms de colonnes de la bibliothèque.
+    La version du paquet est ajoutée aux paramètres. Relecture :
+    ``pandas.read_csv(fichier, comment="#")``.
+    """
+    params = {**params, "version": __version__}
+    comment = "# " + "; ".join(f"{key}={value}" for key, value in params.items())
+    return (comment + "\n" + df.to_csv(index=False, lineterminator="\n")).encode("utf-8")
+
+
+def compare_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Tableau ``compare`` à exporter : le nom de l'ansatz devient la colonne ``ansatz``."""
+    return df.rename_axis("ansatz").reset_index()
+
+
+def scaling_frame(results: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Études ``gradient_scaling`` réunies en un tableau, avec une colonne ``ansatz``."""
+    return pd.concat(
+        [df.assign(ansatz=name)[["ansatz", *df.columns]] for name, df in results.items()],
+        ignore_index=True,
+    )
+
+
+def hardware_frame(name: str, cost: dict) -> pd.DataFrame:
+    """Résultat ``hardware_cost`` à plat, en une ligne (niveau ``basis_only`` suffixé)."""
+    row = {"ansatz": name}
+    row.update({key: value for key, value in cost.items() if not isinstance(value, dict)})
+    for key, value in cost["basis_only"].items():
+        row[f"{key}_basis_only"] = value
+    return pd.DataFrame([row])
+
+
 def compare_params_line(n_samples: int, seed: int, n_seeds: int) -> str:
     """Rappelle les paramètres utilisés pour un calcul ``compare``."""
     seeds = "1 graine" if n_seeds == 1 else f"{n_seeds} graines"
@@ -322,9 +361,17 @@ def hardware_sentence(cost: dict) -> str:
 
 
 def pareto_mask(df: pd.DataFrame) -> list[bool]:
-    """Front de Pareto du tableau ``compare`` : expressibilité basse, variance du gradient haute."""
-    points = list(zip(df["expressibility"], df["gradient_variance"]))
+    """Front de Pareto du tableau ``compare`` : expressibilité basse, variance du gradient
+    (paramètres actifs) haute."""
+    points = list(zip(df["expressibility"], df["gradient_variance_active"]))
     return pareto_front(points, minimize_x=True, maximize_y=True)
+
+
+PARETO_NOTE = (
+    "Ordonnée : variance du gradient moyennée sur les seuls paramètres actifs, pour ne "
+    "pas pénaliser un circuit dont beaucoup de paramètres sont sans effet sur "
+    "l'observable Z0."
+)
 
 
 def pareto_sentence(df: pd.DataFrame) -> str:
@@ -340,7 +387,7 @@ def pareto_sentence(df: pd.DataFrame) -> str:
         first = f"Le front de Pareto contient {listed}."
     return (
         f"{first} Un circuit du front n'est battu par aucun autre sur les deux critères "
-        "(expressibilité plus basse et variance du gradient plus élevée)."
+        "(expressibilité plus basse et variance du gradient des paramètres actifs plus élevée)."
     )
 
 
@@ -369,39 +416,90 @@ def format_factor(fit: dict) -> str:
     return format_overhead(fit["factor_per_qubit"])
 
 
-def scaling_table(fits: dict[str, dict]) -> pd.DataFrame:
-    """Tableau des ajustements ``fit_decay`` par ansatz."""
+DILUTION_GAP = 0.1
+
+DILUTION_SENTENCE = (
+    "Une partie de la baisse de la moyenne sur tous les paramètres vient de paramètres "
+    "sans effet sur l'observable (dilution), pas d'une perte de signal."
+)
+
+
+def scaling_summary(results: dict[str, pd.DataFrame]) -> dict[str, dict]:
+    """Ajustements ``fit_decay`` des deux séries de chaque étude ``gradient_scaling``.
+
+    Pour chaque ansatz : ``active`` (variance sur les paramètres actifs),
+    ``all`` (variance sur tous les paramètres) et ``inactive_fraction``
+    (part moyenne de paramètres inactifs sur la plage de qubits).
+    """
+    return {
+        name: {
+            "active": fit_decay(df["n_qubits"], df["active_mean_variance"]),
+            "all": fit_decay(df["n_qubits"], df["mean_variance"]),
+            "inactive_fraction": float(df["inactive_fraction"].mean()),
+        }
+        for name, df in results.items()
+    }
+
+
+def _format_r2(fit: dict) -> str:
+    return "n/a" if fit["r2"] is None else format_fr(fit["r2"], 3)
+
+
+def scaling_table(summary: dict[str, dict]) -> pd.DataFrame:
+    """Tableau des ajustements par ansatz, pour les deux séries."""
+    entries = summary.values()
     return pd.DataFrame(
         {
-            "Facteur par qubit ajouté": [format_factor(fit) for fit in fits.values()],
-            "R²": [
-                "n/a" if fit["r2"] is None else format_fr(fit["r2"], 3) for fit in fits.values()
+            "Facteur par qubit (actifs)": [format_factor(e["active"]) for e in entries],
+            "R² (actifs)": [_format_r2(e["active"]) for e in entries],
+            "Facteur par qubit (tous)": [format_factor(e["all"]) for e in entries],
+            "R² (tous)": [_format_r2(e["all"]) for e in entries],
+            "Paramètres inactifs (moyenne)": [
+                format_fraction(e["inactive_fraction"]) for e in entries
             ],
         },
-        index=pd.Index([ansatz_label(name) for name in fits], name="Ansatz"),
+        index=pd.Index([ansatz_label(name) for name in summary], name="Ansatz"),
     )
 
 
-def scaling_sentence(name: str, fit: dict) -> str:
-    """Phrase de lecture factuelle d'un ajustement ``fit_decay``.
+def scaling_sentence(name: str, entry: dict) -> str:
+    """Phrase de lecture factuelle d'une étude, fondée sur les paramètres actifs.
 
-    Le terme « plateau stérile » n'est employé que si le facteur par qubit
-    est inférieur à 0,8 avec un R² supérieur à 0,9.
+    La conclusion porte sur la série des paramètres actifs : décroissance
+    exponentielle nette seulement si le facteur par qubit est inférieur à
+    0,8 avec un R² supérieur à 0,9 ; le terme « plateau stérile » n'est
+    employé que dans ce cas. Si la moyenne sur tous les paramètres décroît
+    nettement plus vite (facteur inférieur de plus de 0,1), la phrase
+    signale la dilution par les paramètres inactifs.
     """
     label = f"« {ansatz_label(name)} »"
-    factor, r2 = fit["factor_per_qubit"], fit["r2"]
+    active, everything = entry["active"], entry["all"]
+    factor, r2 = active["factor_per_qubit"], active["r2"]
     if factor is None:
         return (
-            f"{label} : données insuffisantes pour un ajustement "
-            f"({fit['n_points']} point(s) valide(s), 3 nécessaires)."
+            f"{label} : données insuffisantes pour un ajustement sur les paramètres actifs "
+            f"({active['n_points']} point(s) valide(s), 3 nécessaires)."
         )
     sentence = (
-        f"{label} : la variance est multipliée par {format_fr(factor, 2)} à chaque qubit "
-        f"ajouté (ajustement exponentiel, R² = {format_fr(r2, 3)})"
+        f"{label}, paramètres actifs : la variance est multipliée par {format_fr(factor, 2)} "
+        f"à chaque qubit ajouté (ajustement exponentiel, R² = {format_fr(r2, 3)})"
     )
     if factor < BARREN_FACTOR and r2 > BARREN_R2:
-        return sentence + " ; décroissance exponentielle nette, signe d'un plateau stérile."
-    return sentence + " ; pas de décroissance exponentielle nette sur cette plage."
+        sentence += (
+            " ; décroissance exponentielle nette : plateau stérile sur cette plage de "
+            "qubits, avec cette observable."
+        )
+    else:
+        sentence += " ; pas de décroissance exponentielle nette sur cette plage."
+    factor_all = everything["factor_per_qubit"]
+    # La dilution ne peut qu'accélérer la baisse de la moyenne sur tous les
+    # paramètres : la mention n'a de sens que dans ce sens de l'écart.
+    if factor_all is not None and factor_all < factor - DILUTION_GAP:
+        sentence += (
+            f" Sur tous les paramètres, le facteur est {format_fr(factor_all, 2)}. "
+            + DILUTION_SENTENCE
+        )
+    return sentence
 
 
 # Composants graphiques
@@ -573,13 +671,13 @@ def pareto_figure(df: pd.DataFrame):
     """Nuage expressibilité / variance moyenne du gradient, front de Pareto en violet plein."""
     fig, ax = _figure(height=3.8)
     on_front = np.array(pareto_mask(df))
-    x, y = df["expressibility"].to_numpy(), df["gradient_variance"].to_numpy()
+    x, y = df["expressibility"].to_numpy(), df["gradient_variance_active"].to_numpy()
     if "expressibility_std" in df.columns:
         ax.errorbar(
             x,
             y,
             xerr=df["expressibility_std"],
-            yerr=df["gradient_variance_std"],
+            yerr=df["gradient_variance_active_std"],
             fmt="none",
             ecolor=TEXT_MUTED,
             elinewidth=0.8,
@@ -598,7 +696,7 @@ def pareto_figure(df: pd.DataFrame):
             fontsize=8, color=TEXT,
         )
     ax.set_xlabel("Expressibilité (plus bas = plus expressif)")
-    ax.set_ylabel("Variance moyenne du gradient")
+    ax.set_ylabel("Variance du gradient (paramètres actifs)")
     ax.xaxis.set_major_formatter(FRENCH_TICKS)
     ax.yaxis.set_major_formatter(FRENCH_TICKS)
     ax.legend(frameon=False, fontsize=8, labelcolor=TEXT_MUTED)
@@ -611,19 +709,34 @@ SCALING_STYLES = [(VIOLET, "o"), (TEXT, "s"), (CORAL, "^"), (TEXT_MUTED, "D")]
 
 
 def scaling_figure(results: dict[str, pd.DataFrame]):
-    """Variance moyenne du gradient en fonction du nombre de qubits, échelle log."""
-    fig, ax = _figure(height=3.6)
+    """Variance du gradient en fonction du nombre de qubits, échelle log.
+
+    Par ansatz, deux courbes de même couleur et même marqueur : trait plein
+    pour les paramètres actifs (série principale), pointillé pour tous les
+    paramètres.
+    """
+    fig, ax = _figure(width=8.5, height=3.8)
     positive = []
+    handles = []
     for (name, df), (color, marker) in zip(results.items(), SCALING_STYLES):
-        valid = df["mean_variance"] > 0
-        positive.extend(df.loc[valid, "mean_variance"])
-        ax.plot(
-            df.loc[valid, "n_qubits"], df.loc[valid, "mean_variance"], color=color,
-            marker=marker, linewidth=1.6, markersize=6, label=ansatz_label(name),
+        for column, linestyle in (("active_mean_variance", "-"), ("mean_variance", "--")):
+            valid = df[column] > 0
+            positive.extend(df.loc[valid, column])
+            ax.plot(
+                df.loc[valid, "n_qubits"], df.loc[valid, column], color=color,
+                marker=marker, linestyle=linestyle, linewidth=1.6, markersize=6,
+                markerfacecolor=color if linestyle == "-" else CARD,
+            )
+        handles.append(
+            Line2D([], [], color=color, marker=marker, linewidth=1.6, label=ansatz_label(name))
         )
+    handles += [
+        Line2D([], [], color=TEXT_MUTED, linestyle="-", label="Trait plein : paramètres actifs"),
+        Line2D([], [], color=TEXT_MUTED, linestyle="--", label="Pointillé : tous les paramètres"),
+    ]
     ax.set_yscale("log")
     ax.set_xlabel("Nombre de qubits")
-    ax.set_ylabel("Variance moyenne du gradient")
+    ax.set_ylabel("Variance du gradient")
     ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
     ax.xaxis.set_major_formatter(FRENCH_TICKS)
     if positive:
@@ -638,6 +751,10 @@ def scaling_figure(results: dict[str, pd.DataFrame]):
     ax.yaxis.set_minor_formatter(NullFormatter())
     ax.grid(True, which="major", axis="y", color=LINE, linewidth=0.6)
     ax.set_axisbelow(True)
-    ax.legend(frameon=False, fontsize=8, labelcolor=TEXT_MUTED)
+    # Légende hors du tracé : elle ne masque aucune courbe.
+    ax.legend(
+        handles=handles, frameon=False, fontsize=8, labelcolor=TEXT_MUTED,
+        loc="upper left", bbox_to_anchor=(1.01, 1),
+    )
     fig.tight_layout()
     return fig

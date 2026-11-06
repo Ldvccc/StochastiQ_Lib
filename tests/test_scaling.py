@@ -3,7 +3,14 @@ import pytest
 
 from stochastiq import fit_decay, gradient_scaling, pareto_front
 
-COLUMNS = ["n_qubits", "layers", "n_parameters", "mean_variance", "inactive_fraction"]
+COLUMNS = [
+    "n_qubits",
+    "layers",
+    "n_parameters",
+    "mean_variance",
+    "active_mean_variance",
+    "inactive_fraction",
+]
 
 
 def test_pareto_un_point_domine():
@@ -65,6 +72,7 @@ def test_gradient_scaling(mode, layers):
     # hardware_efficient : 2 rotations par qubit et par couche.
     assert df["n_parameters"].tolist() == [2 * n * l for n, l in zip([2, 3], layers)]
     assert (df["mean_variance"] > 0).all()
+    assert (df["active_mean_variance"] >= df["mean_variance"]).all()
     assert calls == [(1, 2), (2, 2)]
 
 

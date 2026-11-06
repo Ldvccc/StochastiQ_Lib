@@ -51,7 +51,9 @@ def gradient_scaling(
     --------
     pandas.DataFrame
         Une ligne par nombre de qubits : ``n_qubits``, ``layers``,
-        ``n_parameters``, ``mean_variance`` et ``inactive_fraction``.
+        ``n_parameters``, ``mean_variance`` (tous les paramètres),
+        ``active_mean_variance`` (paramètres actifs seulement) et
+        ``inactive_fraction``.
 
     Lève
     ----
@@ -80,6 +82,7 @@ def gradient_scaling(
                 "layers": n_layers,
                 "n_parameters": ansatz.num_parameters,
                 "mean_variance": details["mean_variance"],
+                "active_mean_variance": details["active_mean_variance"],
                 "inactive_fraction": details["inactive_fraction"],
             }
         )

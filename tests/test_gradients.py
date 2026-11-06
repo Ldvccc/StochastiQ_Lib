@@ -98,3 +98,32 @@ def test_porte_non_supportee():
     qc.rx(2 * theta, 0)
     with pytest.raises(ValueError, match="non supportée"):
         gradient_variance(qc, n_samples=5)
+
+
+def test_moyenne_sur_les_parametres_actifs_moitie_inactive():
+    # 2 paramètres actifs (RY sur le qubit 0) et 2 sans effet sur Z0 (RZ sur |0⟩ du qubit 1).
+    theta = [Parameter(f"t{i}") for i in range(4)]
+    qc = QuantumCircuit(2)
+    qc.ry(theta[0], 0)
+    qc.ry(theta[1], 0)
+    qc.rz(theta[2], 1)
+    qc.rz(theta[3], 1)
+    details = gradient_variance_details(qc, n_samples=200, seed=0)
+    assert details["inactive_fraction"] == 0.5
+    assert details["active_mean_variance"] > details["mean_variance"]
+    ratio = details["active_mean_variance"] / details["mean_variance"]
+    assert ratio == pytest.approx(1 / (1 - details["inactive_fraction"]))
+
+
+def test_moyenne_active_au_moins_egale_a_la_moyenne():
+    details = gradient_variance_details(build_ansatz("hardware_efficient", 4, 3), n_samples=200, seed=0)
+    assert details["active_mean_variance"] >= details["mean_variance"]
+
+
+def test_moyenne_active_nan_sans_parametre_actif():
+    theta = Parameter("t")
+    qc = QuantumCircuit(1)
+    qc.rz(theta, 0)
+    details = gradient_variance_details(qc, n_samples=20, seed=0)
+    assert details["n_inactive_parameters"] == 1
+    assert np.isnan(details["active_mean_variance"])
