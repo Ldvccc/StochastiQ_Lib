@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from matplotlib.ticker import FuncFormatter
 
 SURFACE = "#F6F5FB"
 CARD = "#FFFFFF"
@@ -30,7 +31,7 @@ TOPOLOGY_LABELS = {
     "line": "Ligne",
     "ring": "Anneau",
     "full": "Complète",
-    "heavy_hex": "Heavy-hex (19 qubits)",
+    "heavy_hex": "Hexagone lourd",
 }
 
 METRIC_LABELS = {
@@ -89,13 +90,31 @@ h1, h2, h3, h4, .sq-brand {{
 # Fonctions pures
 
 
-def format_value(value: float) -> str:
-    """Formate une valeur numérique pour l'affichage (``n/a`` si non définie)."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+def _is_missing(value) -> bool:
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def format_fr(x: float, decimals: int) -> str:
+    """Formate un nombre en notation française (virgule décimale).
+
+    Retourne ``n/a`` si la valeur n'est pas définie.
+    """
+    if _is_missing(x):
         return "n/a"
-    if value != 0 and abs(value) < 1e-3:
-        return f"{value:.3e}"
-    return f"{value:.4f}"
+    return f"{x:.{decimals}f}".replace(".", ",")
+
+
+def format_value(value: float) -> str:
+    """Formate une métrique : 4 décimales, virgule décimale.
+
+    Une valeur non nulle qui s'afficherait 0,0000 passe en notation
+    scientifique (``1,2000e-05``) pour ne pas être confondue avec zéro.
+    """
+    if _is_missing(value):
+        return "n/a"
+    if value != 0 and abs(value) < 5e-5:
+        return f"{value:.4e}".replace(".", ",")
+    return format_fr(value, 4)
 
 
 def compare_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -120,45 +139,81 @@ def compare_table(df: pd.DataFrame) -> pd.DataFrame:
     return table
 
 
-def _names(names: list[str]) -> str:
-    quoted = [f"« {name} »" for name in names]
-    if len(quoted) == 1:
-        return quoted[0]
-    return ", ".join(quoted[:-1]) + " et " + quoted[-1]
+def _metric_sentence(df: pd.DataFrame, metric: str, lower_is_better: bool, winner: str) -> str:
+    """Phrase sur une métrique : gagnant si l'écart avec le deuxième est significatif."""
+    ordered = df.sort_values(metric, ascending=lower_is_better)
+    (name1, v1), (name2, v2) = list(ordered[metric].items())[:2]
+    gap = abs(v1 - v2)
+    label = METRIC_LABELS[metric]
+
+    std_column = f"{metric}_std"
+    if std_column in df.columns:
+        noise = ordered[std_column].iloc[0] + ordered[std_column].iloc[1]
+        if gap <= noise:
+            return (
+                f"{label} : « {name1} » et « {name2} » sont indistinguables sur cette "
+                f"métrique (écart {format_value(gap)}, inférieur à la somme des "
+                f"écarts-types {format_value(noise)})."
+            )
+    elif gap <= 0.10 * abs(v1):
+        return (
+            f"{label} : les différences sont du même ordre que le bruit "
+            "d'échantillonnage ; relancez avec plusieurs graines."
+        )
+    return winner.format(
+        name1=name1, v1=format_value(v1), name2=name2, v2=format_value(v2)
+    )
 
 
 def reading_sentence(df: pd.DataFrame) -> str:
     """Rédige une phrase de lecture du tableau de ``compare``.
 
-    Cite le ou les circuits les plus expressifs (expressibilité minimale) et
-    ceux qui ont la plus forte intrication, avec leurs valeurs. Les ex aequo
-    sont tous cités. Retourne une chaîne vide si le tableau est vide.
+    Pour l'expressibilité et l'intrication, désigne le meilleur circuit
+    seulement si son écart avec le deuxième est significatif :
+
+    - une seule graine (pas de colonnes ``_std``) : écart supérieur à 10 % de
+      la valeur du meilleur ; sinon, la phrase signale que les différences
+      sont du même ordre que le bruit d'échantillonnage ;
+    - plusieurs graines : écart supérieur à la somme des deux écarts-types ;
+      sinon, la phrase indique que les circuits sont indistinguables.
+
+    Retourne une chaîne vide s'il y a moins de deux circuits.
     """
-    if df.empty:
+    if len(df) < 2:
         return ""
-    averaged = "expressibility_std" in df.columns
+    sentences = [
+        _metric_sentence(
+            df,
+            "expressibility",
+            lower_is_better=True,
+            winner="Le circuit le plus expressif est « {name1} » "
+            "(expressibilité {v1}, contre {v2} pour « {name2} »).",
+        ),
+        _metric_sentence(
+            df,
+            "entangling_capability",
+            lower_is_better=False,
+            winner="La plus forte intrication est obtenue par « {name1} » "
+            "({v1}, contre {v2} pour « {name2} »).",
+        ),
+    ]
+    if "expressibility_std" in df.columns:
+        sentences.append("Valeurs moyennes sur les graines.")
+    return " ".join(sentences)
 
-    expr = df["expressibility"]
-    best_expr = [name for name, v in expr.items() if np.isclose(v, expr.min())]
-    ent = df["entangling_capability"]
-    best_ent = [name for name, v in ent.items() if np.isclose(v, ent.max())]
 
-    if len(best_expr) == 1:
-        first = f"Le circuit le plus expressif est {_names(best_expr)}"
-    else:
-        first = f"Les circuits les plus expressifs sont {_names(best_expr)}"
-    first += f" (expressibilité {format_value(expr.min())})."
+LOW_SAMPLES_THRESHOLD = 1000
 
-    if len(best_ent) == 1:
-        second = f"La plus forte intrication est obtenue par {_names(best_ent)}"
-    else:
-        second = f"La plus forte intrication est obtenue par {_names(best_ent)}, ex aequo"
-    second += f" ({format_value(ent.max())})."
+LOW_SAMPLES_WARNING = (
+    "Avec moins de 1000 échantillons, l'expressibilité est surestimée. Comparez "
+    "uniquement des résultats obtenus avec le même nombre d'échantillons."
+)
 
-    sentence = f"{first} {second}"
-    if averaged:
-        sentence += " Valeurs moyennes sur les graines."
-    return sentence
+
+def compare_params_line(n_samples: int, seed: int, n_seeds: int) -> str:
+    """Rappelle les paramètres utilisés pour un calcul ``compare``."""
+    seeds = "1 graine" if n_seeds == 1 else f"{n_seeds} graines"
+    return f"Calcul effectué avec {n_samples} échantillons, graine {seed}, {seeds}."
 
 
 def stats_table(stats: dict) -> pd.DataFrame:
@@ -179,22 +234,60 @@ def gate_counts_table(stats: dict) -> pd.DataFrame:
     )
 
 
+def topology_label(topology: str) -> str:
+    """Retourne le libellé français d'une topologie de la bibliothèque."""
+    return TOPOLOGY_LABELS.get(topology, topology)
+
+
 def hardware_table(cost: dict) -> pd.DataFrame:
-    """Met en forme le résultat de ``hardware_cost`` en tableau avant / après."""
+    """Met en forme le résultat de ``hardware_cost`` sur ses trois niveaux de mesure."""
+    levels = {
+        "Circuit d'origine": cost["before"],
+        "Après traduction": cost["basis_only"],
+        "Après routage": cost["after"],
+    }
     return pd.DataFrame(
         {
-            "Avant": [cost["n_two_qubit_gates_before"], cost["depth_before"]],
-            "Après": [cost["n_two_qubit_gates_after"], cost["depth_after"]],
+            column: [level["n_two_qubit_gates"], level["depth"]]
+            for column, level in levels.items()
         },
-        index=pd.Index(["Portes à 2 qubits", "Profondeur"], name=f"Topologie {cost['topology']}"),
+        index=pd.Index(
+            ["Portes à 2 qubits", "Profondeur"],
+            name=f"Topologie : {topology_label(cost['topology'])}",
+        ),
     )
 
 
 def format_overhead(overhead: float) -> str:
-    """Formate le surcoût en portes à 2 qubits (rapport après / avant)."""
-    if overhead is None or math.isnan(overhead):
+    """Formate un surcoût (rapport de nombres de portes)."""
+    if _is_missing(overhead):
         return "n/a"
-    return f"×{overhead:.2f}"
+    return f"×{format_fr(overhead, 2)}"
+
+
+def hardware_sentence(cost: dict) -> str:
+    """Rédige une phrase de lecture factuelle du résultat de ``hardware_cost``."""
+    before, basis, after = cost["before"], cost["basis_only"], cost["after"]
+    label = topology_label(cost["topology"])
+    sentence = (
+        f"Le circuit d'origine compte {before['n_two_qubit_gates']} portes à 2 qubits "
+        f"pour une profondeur de {before['depth']}. La traduction vers les portes de base "
+        f"donne {basis['n_two_qubit_gates']} portes à 2 qubits et une profondeur de "
+        f"{basis['depth']}. "
+    )
+    if after["n_two_qubit_gates"] == basis["n_two_qubit_gates"]:
+        sentence += (
+            f"Sur la topologie {label}, le routage n'ajoute aucune porte à 2 qubits "
+            f"(profondeur après routage : {after['depth']})."
+        )
+    else:
+        sentence += (
+            f"Sur la topologie {label}, le routage fait passer les portes à 2 qubits de "
+            f"{basis['n_two_qubit_gates']} à {after['n_two_qubit_gates']} "
+            f"({format_overhead(cost['routing_overhead_two_qubit'])}) et la profondeur de "
+            f"{basis['depth']} à {after['depth']}."
+        )
+    return sentence
 
 
 # Composants graphiques
@@ -217,6 +310,35 @@ def sidebar_brand() -> None:
 def note(text: str) -> None:
     """Affiche une note en texte secondaire."""
     st.markdown(f'<p class="sq-note">{text}</p>', unsafe_allow_html=True)
+
+
+# Style du schéma de circuit (``QuantumCircuit.draw("mpl", style=...)``).
+CIRCUIT_STYLE = {
+    "backgroundcolor": CARD,
+    "textcolor": TEXT,
+    "linecolor": TEXT,
+    "creglinecolor": TEXT_MUTED,
+    "gatefacecolor": VIOLET,
+    "gatetextcolor": CARD,
+    "subtextcolor": CARD,
+    "displaycolor": {
+        "rx": [VIOLET, CARD],
+        "ry": [VIOLET, CARD],
+        "rz": [VIOLET, CARD],
+        "cx": [TEXT, CARD],
+        # Couleur du « + » de la cible (premier élément) : blanc sur disque #14163F.
+        "target": [CARD, CARD],
+    },
+}
+
+
+def circuit_figure(ansatz):
+    """Dessine un circuit aux couleurs StochastiQ."""
+    return ansatz.draw("mpl", style=CIRCUIT_STYLE)
+
+
+# Graduations d'axe en notation française (virgule décimale).
+FRENCH_TICKS = FuncFormatter(lambda value, _: f"{value:g}".replace(".", ","))
 
 
 def _style_axes(ax) -> None:
@@ -255,6 +377,8 @@ def fidelity_figure(histogram: dict):
     ax.set_xlabel("Fidélité")
     ax.set_ylabel("Probabilité")
     ax.set_xlim(0, 1)
+    ax.xaxis.set_major_formatter(FRENCH_TICKS)
+    ax.yaxis.set_major_formatter(FRENCH_TICKS)
     ax.legend(frameon=False, labelcolor=TEXT)
     fig.tight_layout()
     return fig
@@ -273,6 +397,7 @@ def expressibility_figure(df: pd.DataFrame):
         capsize=4,
     )
     ax.set_ylabel("Expressibilité (KL)")
+    ax.yaxis.set_major_formatter(FRENCH_TICKS)
     ax.tick_params(axis="x", rotation=30)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment("right")

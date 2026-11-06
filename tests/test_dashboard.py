@@ -2,6 +2,7 @@ import math
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -53,6 +54,34 @@ def test_diagnostiquer_affiche_les_3_cartes():
     ]
 
 
+def test_avertissement_peu_d_echantillons():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    assert [info.value for info in at.tabs[0].info] == [ui.LOW_SAMPLES_WARNING]
+    assert [info.value for info in at.tabs[1].info] == [ui.LOW_SAMPLES_WARNING]
+    at.number_input(key="diag_samples").set_value(1000).run()
+    assert not at.tabs[0].info
+
+
+def test_comparateur_rappelle_les_parametres():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    at.multiselect(key="cmp_ansatz").set_value(["ry_linear", "ry_full"])
+    at.slider(key="cmp_qubits").set_value(2)
+    at.slider(key="cmp_layers").set_value(1)
+    at.number_input(key="cmp_samples").set_value(50)
+    at.slider(key="cmp_n_seeds").set_value(2)
+    at.button(key="cmp_run").click().run()
+    assert not at.exception
+    captions = [caption.value for caption in at.tabs[1].caption]
+    assert ui.compare_params_line(50, 0, 2) in captions
+
+
+def test_compare_params_line():
+    assert ui.compare_params_line(300, 0, 1) == "Calcul effectué avec 300 échantillons, graine 0, 1 graine."
+    assert ui.compare_params_line(1000, 7, 3).endswith("graine 7, 3 graines.")
+
+
 def _compare_df(with_std: bool) -> pd.DataFrame:
     df = pd.DataFrame(
         {
@@ -72,48 +101,104 @@ def _compare_df(with_std: bool) -> pd.DataFrame:
     return df
 
 
+def test_format_fr():
+    assert ui.format_fr(0.14160234, 4) == "0,1416"
+    assert ui.format_fr(1, 2) == "1,00"
+    assert ui.format_fr(-2.5, 1) == "-2,5"
+    assert ui.format_fr(12, 0) == "12"
+    assert ui.format_fr(math.nan, 4) == "n/a"
+    assert ui.format_fr(None, 4) == "n/a"
+
+
 def test_format_value():
-    assert ui.format_value(0.14160234) == "0.1416"
-    assert ui.format_value(0.00012) == "1.200e-04"
-    assert ui.format_value(0) == "0.0000"
+    assert ui.format_value(0.14160234) == "0,1416"
+    assert ui.format_value(0.00012) == "0,0001"
+    assert ui.format_value(0.000012) == "1,2000e-05"
+    assert ui.format_value(0) == "0,0000"
     assert ui.format_value(math.nan) == "n/a"
 
 
 def test_format_overhead():
-    assert ui.format_overhead(3.0) == "×3.00"
+    assert ui.format_overhead(1.0) == "×1,00"
+    assert ui.format_overhead(3.0) == "×3,00"
     assert ui.format_overhead(math.nan) == "n/a"
+
+
+def test_axes_en_notation_francaise():
+    hist = {
+        "edges": np.linspace(0, 1, 5),
+        "circuit": np.array([0.4, 0.3, 0.2, 0.1]),
+        "haar": np.array([0.5, 0.3, 0.15, 0.05]),
+    }
+    fig = ui.fidelity_figure(hist)
+    ax = fig.axes[0]
+    assert ax.xaxis.get_major_formatter()(0.25, 0) == "0,25"
+    assert ax.yaxis.get_major_formatter()(0.5, 0) == "0,5"
+    fig = ui.expressibility_figure(_compare_df(with_std=True))
+    assert fig.axes[0].yaxis.get_major_formatter()(0.05, 0) == "0,05"
 
 
 def test_compare_table_sans_std():
     table = ui.compare_table(_compare_df(with_std=False))
     assert list(table.index) == ["strongly_entangling", "ryrz_circular", "ry_linear"]
-    assert table.loc["ry_linear", "Expressibilité"] == "0.1955"
+    assert table.loc["ry_linear", "Expressibilité"] == "0,1955"
     assert "±" not in table.loc["ry_linear", "Intrication"]
 
 
 def test_compare_table_avec_std():
     table = ui.compare_table(_compare_df(with_std=True))
-    assert table.loc["ry_linear", "Expressibilité"] == "0.1955 ± 0.0010"
+    assert table.loc["ry_linear", "Expressibilité"] == "0,1955 ± 0,0010"
     assert list(table.columns) == [ui.METRIC_LABELS[k] for k in ui.METRIC_LABELS]
 
 
-def test_phrase_de_lecture_cite_les_ex_aequo():
-    sentence = ui.reading_sentence(_compare_df(with_std=False))
-    assert "« strongly_entangling » et « ryrz_circular »" in sentence
-    assert "0.0115" in sentence
-    assert "0.8360" in sentence
-    assert "ry_linear" not in sentence
+def _metrics_df(expr, ent, std=None) -> pd.DataFrame:
+    df = pd.DataFrame(
+        {"expressibility": expr, "entangling_capability": ent},
+        index=[f"c{i}" for i in range(len(expr))],
+    )
+    if std is not None:
+        df["expressibility_std"] = std
+        df["entangling_capability_std"] = std
+    return df
 
 
-def test_phrase_de_lecture_un_seul_gagnant():
-    df = _compare_df(with_std=True).drop(index="ryrz_circular")
+def test_phrase_une_graine_ecart_net():
+    df = _metrics_df(expr=[0.01, 0.05, 0.2], ent=[0.5, 0.9, 0.6])
     sentence = ui.reading_sentence(df)
-    assert sentence.startswith("Le circuit le plus expressif est « strongly_entangling »")
-    assert "moyennes sur les graines" in sentence
+    assert "Le circuit le plus expressif est « c0 »" in sentence
+    assert "La plus forte intrication est obtenue par « c1 »" in sentence
+    assert "bruit" not in sentence
+    assert "graines" not in sentence
 
 
-def test_phrase_de_lecture_tableau_vide():
+def test_phrase_une_graine_ecart_flou():
+    df = _metrics_df(expr=[0.100, 0.105, 0.3], ent=[0.80, 0.78, 0.5])
+    sentence = ui.reading_sentence(df)
+    assert "plus expressif" not in sentence
+    assert "plus forte intrication" not in sentence
+    assert sentence.count("du même ordre que le bruit d'échantillonnage") == 2
+    assert "relancez avec plusieurs graines" in sentence
+
+
+def test_phrase_plusieurs_graines_gagnant_net():
+    df = _metrics_df(expr=[0.01, 0.05], ent=[0.9, 0.6], std=[0.005, 0.005])
+    sentence = ui.reading_sentence(df)
+    assert "Le circuit le plus expressif est « c0 »" in sentence
+    assert "La plus forte intrication est obtenue par « c0 »" in sentence
+    assert "Valeurs moyennes sur les graines." in sentence
+
+
+def test_phrase_plusieurs_graines_egalite():
+    df = _metrics_df(expr=[0.01, 0.02], ent=[0.80, 0.79], std=[0.01, 0.01])
+    sentence = ui.reading_sentence(df)
+    assert "plus expressif" not in sentence
+    assert "plus forte intrication" not in sentence
+    assert sentence.count("indistinguables sur cette métrique") == 2
+
+
+def test_phrase_de_lecture_moins_de_deux_circuits():
     assert ui.reading_sentence(_compare_df(with_std=False).iloc[0:0]) == ""
+    assert ui.reading_sentence(_compare_df(with_std=False).iloc[0:1]) == ""
 
 
 def test_stats_et_portes():
@@ -128,15 +213,59 @@ def test_stats_et_portes():
     assert ui.gate_counts_table(stats)["Nombre"].to_dict() == {"ry": 12, "cx": 9}
 
 
-def test_hardware_table():
-    cost = {
+def _cost(after_gates: int, after_depth: int) -> dict:
+    return {
         "topology": "line",
-        "n_two_qubit_gates_before": 8,
-        "n_two_qubit_gates_after": 24,
-        "depth_before": 16,
-        "depth_after": 28,
-        "overhead_two_qubit": 3.0,
+        "before": {"n_two_qubit_gates": 12, "depth": 15},
+        "basis_only": {"n_two_qubit_gates": 12, "depth": 31},
+        "after": {"n_two_qubit_gates": after_gates, "depth": after_depth},
+        "routing_overhead_two_qubit": after_gates / 12,
     }
-    table = ui.hardware_table(cost)
-    assert table.loc["Portes à 2 qubits"].tolist() == [8, 24]
-    assert table.loc["Profondeur"].tolist() == [16, 28]
+
+
+def test_hardware_table():
+    table = ui.hardware_table(_cost(36, 58))
+    assert list(table.columns) == ["Circuit d'origine", "Après traduction", "Après routage"]
+    assert table.index.name == "Topologie : Ligne"
+    assert table.loc["Portes à 2 qubits"].tolist() == [12, 12, 36]
+    assert table.loc["Profondeur"].tolist() == [15, 31, 58]
+
+
+def test_libelles_des_topologies():
+    assert [ui.topology_label(t) for t in ["line", "ring", "full", "heavy_hex"]] == [
+        "Ligne",
+        "Anneau",
+        "Complète",
+        "Hexagone lourd",
+    ]
+
+
+def test_phrase_materiel_avec_routage():
+    sentence = ui.hardware_sentence(_cost(36, 58))
+    assert "topologie Ligne" in sentence
+    assert "de 12 à 36" in sentence
+    assert "de 31 à 58" in sentence
+
+
+def test_phrase_materiel_sans_routage():
+    sentence = ui.hardware_sentence(_cost(12, 31))
+    assert "n'ajoute aucune porte à 2 qubits" in sentence
+    assert "31" in sentence
+
+
+def test_phrases_en_notation_francaise():
+    sentence = ui.reading_sentence(_metrics_df(expr=[0.01, 0.05], ent=[0.5, 0.9]))
+    assert "0,0100" in sentence and "0.0100" not in sentence
+    cost = _cost(36, 58)
+    assert "×3,00" in ui.hardware_sentence(cost)
+
+
+def test_schema_de_circuit_style_accepte_par_qiskit():
+    import warnings
+
+    from stochastiq import build_ansatz
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fig = ui.circuit_figure(build_ansatz("ryrz_linear", 4, 3))
+    assert fig.get_facecolor()[:3] == (1.0, 1.0, 1.0)
