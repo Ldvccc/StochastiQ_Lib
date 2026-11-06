@@ -324,9 +324,17 @@ def hardware_sentence(cost: dict) -> str:
 
 
 def pareto_mask(df: pd.DataFrame) -> list[bool]:
-    """Front de Pareto du tableau ``compare`` : expressibilité basse, variance du gradient haute."""
-    points = list(zip(df["expressibility"], df["gradient_variance"]))
+    """Front de Pareto du tableau ``compare`` : expressibilité basse, variance du gradient
+    (paramètres actifs) haute."""
+    points = list(zip(df["expressibility"], df["gradient_variance_active"]))
     return pareto_front(points, minimize_x=True, maximize_y=True)
+
+
+PARETO_NOTE = (
+    "Ordonnée : variance du gradient moyennée sur les seuls paramètres actifs, pour ne "
+    "pas pénaliser un circuit dont beaucoup de paramètres sont sans effet sur "
+    "l'observable Z0."
+)
 
 
 def pareto_sentence(df: pd.DataFrame) -> str:
@@ -342,7 +350,7 @@ def pareto_sentence(df: pd.DataFrame) -> str:
         first = f"Le front de Pareto contient {listed}."
     return (
         f"{first} Un circuit du front n'est battu par aucun autre sur les deux critères "
-        "(expressibilité plus basse et variance du gradient plus élevée)."
+        "(expressibilité plus basse et variance du gradient des paramètres actifs plus élevée)."
     )
 
 
@@ -626,13 +634,13 @@ def pareto_figure(df: pd.DataFrame):
     """Nuage expressibilité / variance moyenne du gradient, front de Pareto en violet plein."""
     fig, ax = _figure(height=3.8)
     on_front = np.array(pareto_mask(df))
-    x, y = df["expressibility"].to_numpy(), df["gradient_variance"].to_numpy()
+    x, y = df["expressibility"].to_numpy(), df["gradient_variance_active"].to_numpy()
     if "expressibility_std" in df.columns:
         ax.errorbar(
             x,
             y,
             xerr=df["expressibility_std"],
-            yerr=df["gradient_variance_std"],
+            yerr=df["gradient_variance_active_std"],
             fmt="none",
             ecolor=TEXT_MUTED,
             elinewidth=0.8,
@@ -651,7 +659,7 @@ def pareto_figure(df: pd.DataFrame):
             fontsize=8, color=TEXT,
         )
     ax.set_xlabel("Expressibilité (plus bas = plus expressif)")
-    ax.set_ylabel("Variance moyenne du gradient")
+    ax.set_ylabel("Variance du gradient (paramètres actifs)")
     ax.xaxis.set_major_formatter(FRENCH_TICKS)
     ax.yaxis.set_major_formatter(FRENCH_TICKS)
     ax.legend(frameon=False, fontsize=8, labelcolor=TEXT_MUTED)

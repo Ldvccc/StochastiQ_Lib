@@ -357,12 +357,12 @@ def test_inactive_line():
 
 def _pareto_df(expr, grad, std=False) -> pd.DataFrame:
     df = pd.DataFrame(
-        {"expressibility": expr, "gradient_variance": grad},
+        {"expressibility": expr, "gradient_variance_active": grad},
         index=["all_to_all", "brick_wall", "rotation_only"][: len(expr)],
     )
     if std:
         df["expressibility_std"] = 0.001
-        df["gradient_variance_std"] = 0.001
+        df["gradient_variance_active_std"] = 0.001
     return df
 
 
@@ -384,6 +384,7 @@ def test_figures_pareto_et_echelle():
     fig = ui.pareto_figure(_pareto_df([0.01, 0.03, 0.7], [0.05, 0.04, 0.03], std=True))
     ax = fig.axes[0]
     assert ax.get_xlabel() == "Expressibilité (plus bas = plus expressif)"
+    assert ax.get_ylabel() == "Variance du gradient (paramètres actifs)"
     assert ax.xaxis.get_major_formatter()(0.25, 0) == "0,25"
     results = {
         "hardware_efficient": _scaling_df([0.1, 0.05, 0.02], [0.12, 0.08, 0.07]),
@@ -585,3 +586,16 @@ def test_axe_log_plusieurs_decades():
     assert [ax.yaxis.get_major_formatter()(t, 0) for t in _visible_major_ticks(ax)] == [
         "1e-5", "0,0001", "0,001", "0,01",
     ]
+
+
+def test_pareto_sur_la_variance_active():
+    # Sur tous les paramètres, b semble meilleur que a ; sur les actifs, c'est l'inverse.
+    df = pd.DataFrame(
+        {
+            "expressibility": [0.02, 0.02],
+            "gradient_variance": [0.01, 0.03],
+            "gradient_variance_active": [0.08, 0.04],
+        },
+        index=["all_to_all", "brick_wall"],
+    )
+    assert ui.pareto_mask(df) == [True, False]

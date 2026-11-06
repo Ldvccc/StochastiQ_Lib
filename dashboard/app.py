@@ -192,6 +192,7 @@ with tab_compare:
         st.pyplot(fig)
         plt.close(fig)
         st.markdown(ui.pareto_sentence(df))
+        ui.note(ui.PARETO_NOTE)
         fig = ui.expressibility_figure(df)
         st.pyplot(fig)
         plt.close(fig)
