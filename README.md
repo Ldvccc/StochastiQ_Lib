@@ -100,6 +100,17 @@ print(hardware_cost(qc, topology="heavy_hex", seed=0))
 
 `compare(..., n_seeds=5)` répète chaque métrique sur 5 graines et ajoute les colonnes `<métrique>_std`. La colonne `inactive_fraction` donne la part des paramètres inactifs (coût `"Z0"`).
 
+Variance du gradient en fonction du nombre de qubits (détection d'un plateau stérile) et ajustement exponentiel :
+
+```python
+from stochastiq import fit_decay, gradient_scaling
+
+df = gradient_scaling("hardware_efficient", range(2, 7), layers=3, n_samples=100, seed=0)
+print(fit_decay(df["n_qubits"], df["mean_variance"]))  # factor_per_qubit, r2, n_points
+```
+
+`layers_mode="linear"` utilise autant de couches que de qubits. `pareto_front(points)` indique les points (expressibilité, variance du gradient) non dominés.
+
 ## Dashboard
 
 ```bash
