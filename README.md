@@ -66,7 +66,7 @@ Les définitions précises, avec leurs formules et leurs références (Sim et al
 ## Limites connues
 
 - **Biais d'échantillonnage** : l'expressibilité est surestimée avec peu d'échantillons. Ne comparez que des valeurs obtenues avec le même nombre d'échantillons.
-- **Observable** : la variance du gradient est calculée par défaut sur l'observable locale Z0. Ses conclusions dépendent de l'observable et du nombre de couches.
+- **Observable** : la variance du gradient est calculée par défaut sur l'observable locale Z0. Le résultat dépend de l'observable et du nombre de couches : un circuit peu profond peut rester entraînable avec un coût local (`"Z0"`), tout en présentant un plateau stérile avec un coût global (`"Zall"`, produit des Z). Or le coût réel d'un QCBM est plutôt global, car il se calcule sur toute la distribution de sortie (distance en variation totale, divergence KL). Comparez les deux dans l'onglet Plateau stérile.
 - **Simulation** : elle est exacte et sans bruit. Aucun modèle d'erreur matérielle n'est appliqué.
 - **Transpilation** : elle se fait hors ligne et repose sur des heuristiques de placement et de routage. Le coût matériel dépend de la graine du transpileur.
 - **Portée des métriques** : aucun lien n'est démontré ici entre ces métriques et la qualité d'apprentissage d'une QCBM.
