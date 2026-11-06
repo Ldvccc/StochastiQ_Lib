@@ -64,3 +64,62 @@ def expressibility(
 
     eps = 1e-12
     return float(np.sum(p_ansatz * np.log((p_ansatz + eps) / (p_haar + eps))))
+
+
+def _meyer_wallach(state, n_qubits: int) -> float:
+    """Mesure de Meyer-Wallach Q d'un état pur.
+
+    Q = 2 * (1 - moyenne sur les qubits de Tr(ρ_k²)), où ρ_k est l'état
+    réduit du qubit k. ``state`` est un ``Statevector`` ou un tableau de
+    taille 2^n_qubits.
+    """
+    psi = np.asarray(state).reshape([2] * n_qubits)
+    purities = np.empty(n_qubits)
+    for k in range(n_qubits):
+        m = np.moveaxis(psi, k, 0).reshape(2, -1)
+        rho = m @ m.conj().T
+        purities[k] = np.real(np.trace(rho @ rho))
+    return float(2 * (1 - purities.mean()))
+
+
+def entangling_capability(
+    ansatz: QuantumCircuit,
+    n_samples: int = 2000,
+    seed: int | None = None,
+) -> float:
+    """Calcule la capacité d'intrication moyenne d'un ansatz paramétré.
+
+    Implémente la mesure de Sim et al. (2019), arXiv:1905.10876 : on tire
+    ``n_samples`` jeux de paramètres uniformes dans [0, 2π] et on moyenne la
+    mesure de Meyer-Wallach Q des états produits.
+
+    Paramètres
+    ----------
+    ansatz : QuantumCircuit
+        Circuit paramétré à évaluer.
+    n_samples : int
+        Nombre de jeux de paramètres tirés.
+    seed : int ou None
+        Graine du générateur aléatoire, pour la reproductibilité.
+
+    Retourne
+    --------
+    float
+        Valeur moyenne de Q, entre 0 (états produits) et 1 (fortement intriqués).
+
+    Lève
+    ----
+    ValueError
+        Si le circuit n'a aucun paramètre libre.
+    """
+    n_params = ansatz.num_parameters
+    if n_params == 0:
+        raise ValueError("Le circuit n'a aucun paramètre libre.")
+
+    rng = np.random.default_rng(seed)
+    values = np.empty(n_samples)
+    for i in range(n_samples):
+        theta = rng.uniform(0, 2 * np.pi, n_params)
+        state = Statevector(ansatz.assign_parameters(theta))
+        values[i] = _meyer_wallach(state, ansatz.num_qubits)
+    return float(values.mean())
