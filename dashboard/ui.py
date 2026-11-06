@@ -27,6 +27,17 @@ VIOLET_LIGHT = "#ECE9FF"
 
 METRICS = ["expressibility", "entangling_capability", "gradient_variance"]
 
+# Noms d'affichage des ansatz ; la bibliothèque garde les identifiants snake_case.
+ANSATZ_LABELS = {
+    "basic_entangler": "BasicEntangler",
+    "strongly_entangling": "StronglyEntangling",
+    "hardware_efficient": "HardwareEfficient",
+    "rotation_only": "RotationOnly",
+    "all_to_all": "AllToAll",
+    "brick_wall": "BrickWall",
+    "data_reuploading": "DataReuploading",
+}
+
 TOPOLOGY_LABELS = {
     "line": "Ligne",
     "ring": "Anneau",
@@ -135,7 +146,7 @@ def compare_table(df: pd.DataFrame) -> pd.DataFrame:
             ]
         else:
             table[METRIC_LABELS[metric]] = [format_value(m) for m in df[metric]]
-    table.index.name = "Ansatz"
+    table.index = pd.Index([ansatz_label(name) for name in df.index], name="Ansatz")
     return table
 
 
@@ -143,6 +154,7 @@ def _metric_sentence(df: pd.DataFrame, metric: str, lower_is_better: bool, winne
     """Phrase sur une métrique : gagnant si l'écart avec le deuxième est significatif."""
     ordered = df.sort_values(metric, ascending=lower_is_better)
     (name1, v1), (name2, v2) = list(ordered[metric].items())[:2]
+    name1, name2 = ansatz_label(name1), ansatz_label(name2)
     gap = abs(v1 - v2)
     label = METRIC_LABELS[metric]
 
@@ -232,6 +244,11 @@ def gate_counts_table(stats: dict) -> pd.DataFrame:
         {"Nombre": [n for _, n in counts]},
         index=pd.Index([name for name, _ in counts], name="Porte"),
     )
+
+
+def ansatz_label(name: str) -> str:
+    """Retourne le nom d'affichage d'un ansatz de la bibliothèque."""
+    return ANSATZ_LABELS.get(name, name)
 
 
 def topology_label(topology: str) -> str:
@@ -389,7 +406,7 @@ def expressibility_figure(df: pd.DataFrame):
     fig, ax = _figure(height=3.2)
     yerr = df["expressibility_std"] if "expressibility_std" in df.columns else None
     ax.bar(
-        df.index.astype(str),
+        [ansatz_label(name) for name in df.index],
         df["expressibility"],
         yerr=yerr,
         color=VIOLET,
