@@ -6,12 +6,13 @@ Première version du prototype.
 
 ### Ansatz
 - Les 7 ansatz de QCBM Lab, reconstruits d'après le rapport du projet (section 2.4) : `basic_entangler`, `strongly_entangling`, `hardware_efficient`, `rotation_only`, `all_to_all`, `brick_wall`, `data_reuploading` (`build_ansatz`, `list_ansatz`).
+- Description structurée d'un ansatz en colonnes de portes, pour le dessiner (`ansatz_structure`).
 - Vérification contre PennyLane (option `verify`) : gabarits `BasicEntanglerLayers` et `StronglyEntanglingLayers`, et circuits de référence en portes PennyLane pour les autres.
 
 ### Métriques
 - Expressibilité de Sim et al. (2019) et histogramme des fidélités comparé à la référence de Haar (`expressibility`, `fidelity_histogram`).
 - Capacité d'intrication de Meyer-Wallach (`entangling_capability`).
-- Variance du gradient par la règle du décalage de paramètre, calculée pour chaque paramètre, avec les observables `Z0` et `Zmean`. Sorties : moyenne sur tous les paramètres, moyenne sur les paramètres actifs, part des paramètres inactifs (`gradient_variance`, `gradient_variance_details`).
+- Variance du gradient par la règle du décalage de paramètre, calculée pour chaque paramètre, avec les observables `Z0` (coût local), `Zmean` et `Zall` (produit des Z, coût global). Sorties : moyenne sur tous les paramètres, moyenne sur les paramètres actifs, part des paramètres inactifs (`gradient_variance`, `gradient_variance_details`).
 - Statistiques de circuit : profondeur, portes à 2 qubits, portes par type (`circuit_stats`).
 - Comparaison de plusieurs ansatz en `pandas.DataFrame`, avec moyenne et écart-type sur plusieurs graines (`compare`). Front de Pareto (`pareto_front`).
 

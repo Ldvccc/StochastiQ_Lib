@@ -1,4 +1,4 @@
-from .ansatz import build_ansatz, list_ansatz
+from .ansatz import ansatz_structure, build_ansatz, list_ansatz
 from .compare import compare, pareto_front
 from .gradients import gradient_variance, gradient_variance_details
 from .hardware import hardware_cost, list_topologies
@@ -17,6 +17,7 @@ __all__ = [
     "list_topologies",
     "build_ansatz",
     "list_ansatz",
+    "ansatz_structure",
     "compare",
     "pareto_front",
     "gradient_scaling",
