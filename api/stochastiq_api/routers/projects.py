@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import ProjectAccess, get_current_user, require_role
+from ..events import record
 from ..models import Membership, Project, User
 from ..roles import MIN_ROLE
 from ..schemas import MemberOut, MemberPatch, ProjectIn, ProjectOut, ProjectPatch
@@ -147,6 +148,18 @@ def update_member(
     if data.role is not None and data.role != membership.role:
         if membership.role == "owner" and _owner_count(db, access.project.id) == 1:
             raise HTTPException(status.HTTP_409_CONFLICT, LAST_OWNER)
+        record(
+            db,
+            access.project.id,
+            access.user.id,
+            "role_changed",
+            {
+                "user_id": membership.user_id,
+                "name": membership.user.name,
+                "old_role": membership.role,
+                "new_role": data.role,
+            },
+        )
         membership.role = data.role
     if data.title is not None:
         membership.title = data.title
