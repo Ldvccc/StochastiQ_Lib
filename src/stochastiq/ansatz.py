@@ -121,3 +121,62 @@ def build_ansatz(name: str, n_qubits: int, layers: int) -> QuantumCircuit:
         for control, target in entanglers(n_qubits, layer):
             qc.cx(control, target)
     return qc
+
+
+def ansatz_structure(name: str, n_qubits: int, layers: int) -> dict:
+    """Décrit un ansatz sous forme structurée, pour le dessiner (par exemple côté web).
+
+    Le circuit est découpé en colonnes, dans l'ordre d'exécution : pour
+    chaque couche, une colonne par rotation (la r-ième rotation de tous les
+    qubits), puis une colonne par CNOT. Les portes et l'ordre des paramètres
+    sont ceux de ``build_ansatz``.
+
+    Paramètres
+    ----------
+    name : str
+        Nom de l'ansatz, parmi ``list_ansatz()``.
+    n_qubits : int
+        Nombre de qubits.
+    layers : int
+        Nombre de couches.
+
+    Retourne
+    --------
+    dict
+        ``{"n_qubits", "layers", "columns"}``, où ``columns`` est une liste de
+        ``{"gates": [...]}`` et chaque porte vaut ``{"type": "RX" | "RY" | "RZ"
+        | "CNOT", "qubits": [...], "param_index": int ou None}``. Pour un
+        CNOT, ``qubits`` vaut ``[contrôle, cible]`` et ``param_index`` None.
+
+    Lève
+    ----
+    ValueError
+        Si le nom est inconnu.
+    """
+    if name not in _ANSATZ:
+        raise ValueError(
+            f"Ansatz inconnu : {name!r}. Noms valides : {', '.join(list_ansatz())}."
+        )
+
+    rotations, entanglers = _ANSATZ[name]
+    k = len(rotations)
+    columns = []
+    for layer in range(layers):
+        for r, rotation in enumerate(rotations):
+            columns.append(
+                {
+                    "gates": [
+                        {
+                            "type": rotation.upper(),
+                            "qubits": [j],
+                            "param_index": (layer * n_qubits + j) * k + r,
+                        }
+                        for j in range(n_qubits)
+                    ]
+                }
+            )
+        for control, target in entanglers(n_qubits, layer):
+            columns.append(
+                {"gates": [{"type": "CNOT", "qubits": [control, target], "param_index": None}]}
+            )
+    return {"n_qubits": n_qubits, "layers": layers, "columns": columns}

@@ -29,7 +29,7 @@ print(expressibility(qc, n_samples=1000, seed=0))  # plus bas = plus expressif
 print(gradient_variance_details(qc, seed=0)["active_mean_variance"])
 ```
 
-Pour comparer plusieurs ansatz : `compare({nom: circuit}, n_samples=1000, seed=0, n_seeds=3)`, qui retourne un `pandas.DataFrame`. Pour une étude en fonction du nombre de qubits : `gradient_scaling(nom, range(2, 7))` et `fit_decay`. Pour le coût matériel : `hardware_cost(circuit, topology="heavy_hex", seed=0)`. Le notebook [`examples/demo.ipynb`](examples/demo.ipynb) enchaîne ces appels.
+Pour comparer plusieurs ansatz : `compare({nom: circuit}, n_samples=1000, seed=0, n_seeds=3)`, qui retourne un `pandas.DataFrame`. Pour une étude en fonction du nombre de qubits : `gradient_scaling(nom, range(2, 7))` et `fit_decay`. Pour le coût matériel : `hardware_cost(circuit, topology="heavy_hex", seed=0)`. Pour dessiner un circuit : `ansatz_structure(nom, n_qubits, layers)`. Le notebook [`examples/demo.ipynb`](examples/demo.ipynb) enchaîne ces appels.
 
 ## Dashboard
 
