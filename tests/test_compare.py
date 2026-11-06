@@ -42,3 +42,12 @@ def test_compare_variance_active_au_moins_egale():
     circuits = {name: build_ansatz(name, 3, 2) for name in ("hardware_efficient", "strongly_entangling")}
     df = compare(circuits, n_samples=50, seed=0)
     assert (df["gradient_variance_active"] >= df["gradient_variance"]).all()
+
+
+def test_compare_observable_globale():
+    circuits = {"hardware_efficient": build_ansatz("hardware_efficient", 3, 2)}
+    local = compare(circuits, n_samples=30, seed=0)
+    globale = compare(circuits, n_samples=30, seed=0, observable="Zall")
+    assert list(globale.columns) == COLUMNS
+    assert globale["expressibility"].iloc[0] == local["expressibility"].iloc[0]
+    assert globale["gradient_variance"].iloc[0] != local["gradient_variance"].iloc[0]

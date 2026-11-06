@@ -33,8 +33,9 @@ Fonctions : `gradient_variance(ansatz, n_samples=200, observable="Z0", seed=None
 
 Coût : C(θ) = ⟨ψ(θ)| O |ψ(θ)⟩, avec deux observables possibles :
 
-- `"Z0"` (défaut) : O = Z sur le qubit 0. C'est un observable **local** : seuls les paramètres dans le cône causal du qubit 0 influencent le coût.
-- `"Zmean"` : O = (1/n) Σ_k Z_k, moyenne des Z sur tous les qubits.
+- `"Z0"` (défaut) : O = Z sur le qubit 0. C'est un coût **local** : seuls les paramètres dans le cône causal du qubit 0 influencent le coût. À faible profondeur, un coût local présente peu de plateau stérile.
+- `"Zmean"` : O = (1/n) Σ_k Z_k, moyenne des Z sur tous les qubits. C'est une somme de termes locaux.
+- `"Zall"` : O = Z ⊗ Z ⊗ … ⊗ Z (`SparsePauliOp("Z" * n)`), produit des Z sur tous les qubits. C'est un coût **global** : il dépend de tous les qubits à la fois, comme un coût calculé sur toute la distribution de sortie (distance en variation totale, divergence KL), ce qui est le cas réel d'un QCBM. Un coût global présente un plateau stérile même à faible profondeur (Cerezo et al. 2021).
 
 Gradient : il est calculé par la **règle du décalage de paramètre**, ∂C/∂θ_p = [C(θ + (π/2) e_p) − C(θ − (π/2) e_p)] / 2. Elle est exacte pour des rotations RX, RY ou RZ dont l'angle est un paramètre seul, utilisé une seule fois. Les autres portes paramétrées lèvent une `ValueError`.
 

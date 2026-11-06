@@ -655,3 +655,105 @@ def test_boutons_csv_dans_l_app():
     at.button(key="bp_run").click().run()
     assert not at.exception
     assert any(b.label == ui.CSV_LABEL for b in at.tabs[4].get("download_button"))
+
+
+def _fit(factor, r2):
+    return {"factor_per_qubit": factor, "r2": r2, "n_points": 4}
+
+
+def test_phrase_local_plat_global_decroissant_hardware_efficient():
+    from stochastiq import gradient_scaling
+
+    by_observable = {
+        observable: {
+            "hardware_efficient": gradient_scaling(
+                "hardware_efficient", range(2, 6), layers=3, n_samples=100,
+                observable=observable, seed=0,
+            )
+        }
+        for observable in ("Z0", "Zall")
+    }
+    summary = ui.observables_summary(by_observable["Z0"], by_observable["Zall"])
+    entry = summary["hardware_efficient"]
+    assert entry["global"]["factor_per_qubit"] < entry["local"]["factor_per_qubit"]
+    sentence = ui.observables_sentence("hardware_efficient", entry)
+    assert sentence.startswith("« HardwareEfficient », paramètres actifs : facteur par qubit")
+    assert sentence.endswith(ui.LOCAL_VS_GLOBAL_SENTENCE)
+
+
+@pytest.mark.parametrize(
+    "local, global_, expected",
+    [
+        (_fit(0.95, 0.5), _fit(0.5, 0.98), ui.LOCAL_VS_GLOBAL_SENTENCE),
+        (_fit(0.6, 0.97), _fit(0.5, 0.99), "nette avec les deux coûts"),
+        (_fit(0.6, 0.97), _fit(0.9, 0.99), "avec le coût local seulement"),
+        (_fit(0.95, 0.5), _fit(0.85, 0.99), "ni en local ni en global"),
+    ],
+)
+def test_phrase_local_global_quatre_cas(local, global_, expected):
+    sentence = ui.observables_sentence("data_reuploading", {"local": local, "global": global_})
+    assert expected in sentence
+    assert "0,95" in sentence or "0,60" in sentence
+    if expected != ui.LOCAL_VS_GLOBAL_SENTENCE:
+        assert ui.LOCAL_VS_GLOBAL_SENTENCE not in sentence
+
+
+def test_phrase_local_global_donnees_insuffisantes():
+    entry = {"local": _fit(None, None), "global": _fit(0.5, 0.99)}
+    assert "données insuffisantes" in ui.observables_sentence("brick_wall", entry)
+
+
+def test_tableau_figure_et_csv_local_global():
+    local = {"hardware_efficient": _scaling_df([0.08, 0.04, 0.03], [0.11, 0.07, 0.065])}
+    global_ = {"hardware_efficient": _scaling_df([0.05, 0.012, 0.003], [0.06, 0.015, 0.004])}
+    table = ui.observables_table(ui.observables_summary(local, global_))
+    assert list(table.columns) == [
+        "Facteur par qubit (local)",
+        "R² (local)",
+        "Facteur par qubit (global)",
+        "R² (global)",
+    ]
+    ax = ui.observables_figure(local, global_).axes[0]
+    assert [line.get_linestyle() for line in ax.get_lines()] == ["-", "-."]
+    legend = [text.get_text() for text in ax.get_legend().get_texts()]
+    assert legend[-2:] == [
+        "Trait plein : coût local Z0 (actifs)",
+        "Trait mixte : coût global Z⊗n (actifs)",
+    ]
+    frame = ui.observables_frame({"Z0": local, "Zall": global_})
+    assert list(frame.columns[:2]) == ["ansatz", "observable"]
+    assert frame["observable"].tolist() == ["Z0"] * 3 + ["Zall"] * 3
+
+
+def test_notes_selon_l_observable():
+    assert "locale Z0" in ui.observable_note("Z0")
+    assert "globale Z⊗n" in ui.observable_note("Zall")
+    assert "local (Z0) et d'un coût global" in ui.observable_note(None)
+
+
+def test_comparer_local_et_global_dans_l_app():
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.run()
+    assert not at.radio(key="bp_observable").proto.disabled
+    at.multiselect(key="bp_ansatz").set_value(["hardware_efficient"])
+    at.slider(key="bp_qubits").set_value((2, 4))
+    at.number_input(key="bp_samples").set_value(20)
+    at.checkbox(key="bp_compare").check().run()
+    assert at.radio(key="bp_observable").proto.disabled
+    at.button(key="bp_run").click().run()
+    assert not at.exception
+    tab = at.tabs[4]
+    assert "Facteur par qubit (global)" in tab.table[0].value.columns
+    assert any("en global (R² =" in m.value for m in tab.markdown)
+
+
+def test_observable_globale_seule_dans_l_app():
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.run()
+    at.multiselect(key="bp_ansatz").set_value(["hardware_efficient"])
+    at.slider(key="bp_qubits").set_value((2, 3))
+    at.number_input(key="bp_samples").set_value(20)
+    at.radio(key="bp_observable").set_value("Zall")
+    at.button(key="bp_run").click().run()
+    assert not at.exception
+    assert any("observable globale" in m.value for m in at.tabs[4].markdown)

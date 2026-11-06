@@ -40,8 +40,13 @@ def _apply_fixed(states: np.ndarray, matrix: np.ndarray, axes: list[int]) -> np.
     return np.moveaxis(s, list(range(k)), axes)
 
 
-def _expectations(ansatz: QuantumCircuit, thetas: np.ndarray, z_qubits: list[int]) -> np.ndarray:
-    """Valeur moyenne de la moyenne des Z sur ``z_qubits``, pour chaque ligne de ``thetas``.
+def _expectations(
+    ansatz: QuantumCircuit, thetas: np.ndarray, z_qubits: list[int], product: bool = False
+) -> np.ndarray:
+    """Valeur moyenne d'un observable en Z, pour chaque ligne de ``thetas``.
+
+    L'observable est la moyenne des Z sur ``z_qubits``, ou leur produit si
+    ``product`` est vrai.
 
     Simulation par vecteur d'état d'un lot de jeux de paramètres. Les
     amplitudes ont la forme (B, 2, ..., 2), le qubit q étant sur l'axe n - q
@@ -71,6 +76,14 @@ def _expectations(ansatz: QuantumCircuit, thetas: np.ndarray, z_qubits: list[int
             states = _apply_fixed(states, matrix, [n - q for q in reversed(qubits)])
 
     probs = np.abs(states) ** 2
+    if product:
+        # ⟨Z⊗...⊗Z⟩ : somme des probabilités pondérées par la parité des qubits mesurés.
+        signs = np.array([1.0, -1.0])
+        for q in z_qubits:
+            shape = [1] * (n + 1)
+            shape[n - q] = 2
+            probs = probs * signs.reshape(shape)
+        return probs.reshape(len(thetas), -1).sum(axis=1)
     values = []
     for q in z_qubits:
         marginal = np.moveaxis(probs, n - q, 1).reshape(len(thetas), 2, -1).sum(axis=2)
@@ -78,12 +91,17 @@ def _expectations(ansatz: QuantumCircuit, thetas: np.ndarray, z_qubits: list[int
     return np.mean(values, axis=0)
 
 
-def _cost_qubits(observable: str, n_qubits: int) -> list[int]:
+def _cost_terms(observable: str, n_qubits: int) -> tuple[list[int], bool]:
+    """Qubits de l'observable et indicateur de produit (``True`` pour ``"Zall"``)."""
     if observable == "Z0":
-        return [0]
+        return [0], False
     if observable == "Zmean":
-        return list(range(n_qubits))
-    raise ValueError(f"Observable non supporté : {observable!r} (attendu : 'Z0' ou 'Zmean').")
+        return list(range(n_qubits)), False
+    if observable == "Zall":
+        return list(range(n_qubits)), True
+    raise ValueError(
+        f"Observable non supporté : {observable!r} (attendu : 'Z0', 'Zmean' ou 'Zall')."
+    )
 
 
 def gradient_variance_details(
@@ -101,10 +119,17 @@ def gradient_variance_details(
 
     Observables de coût :
 
-    - ``"Z0"`` (défaut) : ⟨Z⟩ sur le qubit 0, observable local ; seuls les
-      paramètres dans le cône causal du qubit 0 ont un gradient non nul ;
-    - ``"Zmean"`` : moyenne des ⟨Z⟩ sur tous les qubits, observable global
-      au sens où chaque qubit contribue ; davantage de paramètres sont actifs.
+    - ``"Z0"`` (défaut) : ⟨Z⟩ sur le qubit 0, coût local ; seuls les
+      paramètres dans le cône causal du qubit 0 ont un gradient non nul. À
+      faible profondeur, un coût local présente peu de plateau stérile ;
+    - ``"Zmean"`` : moyenne des ⟨Z⟩ sur tous les qubits ; chaque terme ne
+      porte que sur un qubit (somme de coûts locaux), mais davantage de
+      paramètres sont actifs ;
+    - ``"Zall"`` : ⟨Z⊗...⊗Z⟩, produit des Z sur tous les qubits
+      (``SparsePauliOp("Z" * n)``), coût global. Il dépend de tous les qubits
+      à la fois, comme un coût calculé sur toute la distribution de sortie
+      (distance en variation totale, divergence KL) ; un coût global présente
+      un plateau stérile même à faible profondeur.
 
     Un paramètre est inactif si la variance de son gradient est inférieure à
     1e-12 : par exemple un RZ appliqué à |0⟩, qui n'ajoute qu'une phase, ou
@@ -126,7 +151,7 @@ def gradient_variance_details(
     n_samples : int
         Nombre de points tirés uniformément dans [0, 2π].
     observable : str
-        ``"Z0"`` ou ``"Zmean"``.
+        ``"Z0"``, ``"Zmean"`` ou ``"Zall"``.
     seed : int ou None
         Graine du générateur aléatoire, pour la reproductibilité.
 
@@ -149,7 +174,7 @@ def gradient_variance_details(
     n_params = ansatz.num_parameters
     if n_params == 0:
         raise ValueError("Le circuit n'a aucun paramètre libre.")
-    z_qubits = _cost_qubits(observable, ansatz.num_qubits)
+    z_qubits, product = _cost_terms(observable, ansatz.num_qubits)
 
     rng = np.random.default_rng(seed)
     thetas = rng.uniform(0, 2 * np.pi, (n_samples, n_params))
@@ -164,7 +189,7 @@ def gradient_variance_details(
     for start in range(0, n_samples, chunk):
         block = thetas[start : start + chunk]
         batch = (block[:, None, :] + shifts[None]).reshape(-1, n_params)
-        costs = _expectations(ansatz, batch, z_qubits).reshape(len(block), 2 * n_params)
+        costs = _expectations(ansatz, batch, z_qubits, product).reshape(len(block), 2 * n_params)
         gradients[start : start + chunk] = (costs[:, 0::2] - costs[:, 1::2]) / 2
 
     variances = gradients.var(axis=0)
@@ -195,7 +220,7 @@ def gradient_variance(
     à |0⟩, paramètre hors du cône causal de l'observable). Les paramètres
     inactifs comptent dans la moyenne avec une variance nulle ; leur nombre
     est donné par ``gradient_variance_details``, qui documente aussi les
-    observables ``"Z0"`` et ``"Zmean"`` et les limites de la méthode.
+    observables ``"Z0"``, ``"Zmean"`` et ``"Zall"`` et les limites de la méthode.
 
     Paramètres
     ----------
@@ -204,7 +229,8 @@ def gradient_variance(
     n_samples : int
         Nombre de points tirés uniformément dans [0, 2π].
     observable : str
-        ``"Z0"`` (⟨Z⟩ sur le qubit 0) ou ``"Zmean"`` (moyenne des ⟨Z⟩).
+        ``"Z0"`` (⟨Z⟩ sur le qubit 0, local), ``"Zmean"`` (moyenne des ⟨Z⟩) ou
+        ``"Zall"`` (produit des Z sur tous les qubits, global).
     seed : int ou None
         Graine du générateur aléatoire, pour la reproductibilité.
 

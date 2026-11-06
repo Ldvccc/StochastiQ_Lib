@@ -40,7 +40,8 @@ def gradient_scaling(
     n_samples : int
         Nombre de points tirés pour chaque nombre de qubits.
     observable : str
-        ``"Z0"`` ou ``"Zmean"``, voir ``gradient_variance_details``.
+        ``"Z0"`` (local), ``"Zmean"`` ou ``"Zall"`` (global), voir
+        ``gradient_variance_details``.
     seed : int ou None
         Graine du générateur aléatoire, la même pour chaque nombre de qubits.
     callback : callable ou None

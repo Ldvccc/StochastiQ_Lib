@@ -266,6 +266,16 @@ def scaling_frame(results: dict[str, pd.DataFrame]) -> pd.DataFrame:
     )
 
 
+def observables_frame(by_observable: dict[str, dict[str, pd.DataFrame]]) -> pd.DataFrame:
+    """Études par observable réunies, avec les colonnes ``ansatz`` et ``observable``."""
+    frames = []
+    for observable, results in by_observable.items():
+        frame = scaling_frame(results)
+        frame.insert(1, "observable", observable)
+        frames.append(frame)
+    return pd.concat(frames, ignore_index=True)
+
+
 def hardware_frame(name: str, cost: dict) -> pd.DataFrame:
     """Résultat ``hardware_cost`` à plat, en une ligne (niveau ``basis_only`` suffixé)."""
     row = {"ansatz": name}
@@ -459,6 +469,104 @@ def scaling_table(summary: dict[str, dict]) -> pd.DataFrame:
             ],
         },
         index=pd.Index([ansatz_label(name) for name in summary], name="Ansatz"),
+    )
+
+
+OBSERVABLE_LABELS = {"Z0": "Locale Z0", "Zall": "Globale Z⊗n"}
+
+COMPARE_OBSERVABLES_LABEL = "Comparer local et global"
+
+LOCAL_VS_GLOBAL_SENTENCE = (
+    "Le circuit reste entraînable avec un coût local, mais pas avec un coût global ; "
+    "l'entraînement d'un QCBM sur une distribution complète se rapproche du cas global."
+)
+
+
+def observable_note(observable: str | None) -> str:
+    """Note sous le graphique, selon l'observable (``None`` : comparaison local / global)."""
+    if observable == "Z0":
+        return (
+            "Résultat sur une observable locale Z0 ; il dépend de l'observable et du "
+            "nombre de couches."
+        )
+    if observable == "Zall":
+        return (
+            "Résultat sur une observable globale Z⊗n (produit des Z sur tous les qubits) ; "
+            "il dépend de l'observable et du nombre de couches."
+        )
+    return (
+        "Comparaison d'un coût local (Z0) et d'un coût global (Z⊗n), sur les paramètres "
+        "actifs ; le résultat dépend du nombre de couches."
+    )
+
+
+def _is_net_decay(fit: dict) -> bool:
+    factor = fit["factor_per_qubit"]
+    return factor is not None and factor < BARREN_FACTOR and fit["r2"] > BARREN_R2
+
+
+def observables_summary(
+    local: dict[str, pd.DataFrame], global_: dict[str, pd.DataFrame]
+) -> dict[str, dict]:
+    """Ajustements ``fit_decay`` des paramètres actifs, en coût local et en coût global."""
+    return {
+        name: {
+            "local": fit_decay(local[name]["n_qubits"], local[name]["active_mean_variance"]),
+            "global": fit_decay(
+                global_[name]["n_qubits"], global_[name]["active_mean_variance"]
+            ),
+        }
+        for name in local
+    }
+
+
+def observables_table(summary: dict[str, dict]) -> pd.DataFrame:
+    """Tableau des facteurs par qubit et des R², coût local et coût global."""
+    entries = summary.values()
+    return pd.DataFrame(
+        {
+            "Facteur par qubit (local)": [format_factor(e["local"]) for e in entries],
+            "R² (local)": [_format_r2(e["local"]) for e in entries],
+            "Facteur par qubit (global)": [format_factor(e["global"]) for e in entries],
+            "R² (global)": [_format_r2(e["global"]) for e in entries],
+        },
+        index=pd.Index([ansatz_label(name) for name in summary], name="Ansatz"),
+    )
+
+
+def observables_sentence(name: str, entry: dict) -> str:
+    """Phrase de lecture de la comparaison local / global, sur les paramètres actifs.
+
+    Une décroissance est nette si le facteur par qubit est inférieur à 0,8
+    avec un R² supérieur à 0,9. Un circuit sans décroissance nette en local
+    mais en décroissance nette en global reçoit ``LOCAL_VS_GLOBAL_SENTENCE``.
+    """
+    label = f"« {ansatz_label(name)} »"
+    local, global_ = entry["local"], entry["global"]
+    if local["factor_per_qubit"] is None or global_["factor_per_qubit"] is None:
+        return (
+            f"{label} : données insuffisantes pour comparer les coûts local et global "
+            "(3 points valides nécessaires par série)."
+        )
+    sentence = (
+        f"{label}, paramètres actifs : facteur par qubit "
+        f"{format_fr(local['factor_per_qubit'], 2)} en local (R² = {format_fr(local['r2'], 3)}) "
+        f"et {format_fr(global_['factor_per_qubit'], 2)} en global "
+        f"(R² = {format_fr(global_['r2'], 3)})."
+    )
+    net_local, net_global = _is_net_decay(local), _is_net_decay(global_)
+    if net_global and not net_local:
+        return f"{sentence} {LOCAL_VS_GLOBAL_SENTENCE}"
+    if net_global:
+        return f"{sentence} Décroissance exponentielle nette avec les deux coûts sur cette plage."
+    if net_local:
+        return (
+            f"{sentence} Décroissance exponentielle nette avec le coût local seulement "
+            "sur cette plage."
+        )
+    return (
+        f"{sentence} Pas de décroissance exponentielle nette sur cette plage, ni en local "
+        "ni en global."
     )
 
 
@@ -708,32 +816,8 @@ def pareto_figure(df: pd.DataFrame):
 SCALING_STYLES = [(VIOLET, "o"), (TEXT, "s"), (CORAL, "^"), (TEXT_MUTED, "D")]
 
 
-def scaling_figure(results: dict[str, pd.DataFrame]):
-    """Variance du gradient en fonction du nombre de qubits, échelle log.
-
-    Par ansatz, deux courbes de même couleur et même marqueur : trait plein
-    pour les paramètres actifs (série principale), pointillé pour tous les
-    paramètres.
-    """
-    fig, ax = _figure(width=8.5, height=3.8)
-    positive = []
-    handles = []
-    for (name, df), (color, marker) in zip(results.items(), SCALING_STYLES):
-        for column, linestyle in (("active_mean_variance", "-"), ("mean_variance", "--")):
-            valid = df[column] > 0
-            positive.extend(df.loc[valid, column])
-            ax.plot(
-                df.loc[valid, "n_qubits"], df.loc[valid, column], color=color,
-                marker=marker, linestyle=linestyle, linewidth=1.6, markersize=6,
-                markerfacecolor=color if linestyle == "-" else CARD,
-            )
-        handles.append(
-            Line2D([], [], color=color, marker=marker, linewidth=1.6, label=ansatz_label(name))
-        )
-    handles += [
-        Line2D([], [], color=TEXT_MUTED, linestyle="-", label="Trait plein : paramètres actifs"),
-        Line2D([], [], color=TEXT_MUTED, linestyle="--", label="Pointillé : tous les paramètres"),
-    ]
+def _scaling_axes(fig, ax, positive: list[float], handles: list) -> None:
+    """Axe log (puissances de dix, grille horizontale) et légende hors du tracé."""
     ax.set_yscale("log")
     ax.set_xlabel("Nombre de qubits")
     ax.set_ylabel("Variance du gradient")
@@ -757,4 +841,56 @@ def scaling_figure(results: dict[str, pd.DataFrame]):
         loc="upper left", bbox_to_anchor=(1.01, 1),
     )
     fig.tight_layout()
+
+
+def _two_series_figure(series: list[tuple[dict[str, pd.DataFrame], str, str]], styles: list[str]):
+    """Par ansatz, une courbe par série (même couleur, même marqueur, trait différent)."""
+    fig, ax = _figure(width=8.5, height=3.8)
+    positive = []
+    handles = []
+    for name, (color, marker) in zip(series[0][0], SCALING_STYLES):
+        for (results, column, _), linestyle in zip(series, styles):
+            df = results[name]
+            valid = df[column] > 0
+            positive.extend(df.loc[valid, column])
+            ax.plot(
+                df.loc[valid, "n_qubits"], df.loc[valid, column], color=color,
+                marker=marker, linestyle=linestyle, linewidth=1.6, markersize=6,
+                markerfacecolor=color if linestyle == "-" else CARD,
+            )
+        handles.append(
+            Line2D([], [], color=color, marker=marker, linewidth=1.6, label=ansatz_label(name))
+        )
+    handles += [
+        Line2D([], [], color=TEXT_MUTED, linestyle=linestyle, label=label)
+        for (_, _, label), linestyle in zip(series, styles)
+    ]
+    _scaling_axes(fig, ax, positive, handles)
     return fig
+
+
+def scaling_figure(results: dict[str, pd.DataFrame]):
+    """Variance du gradient en fonction du nombre de qubits, échelle log.
+
+    Par ansatz, deux courbes de même couleur et même marqueur : trait plein
+    pour les paramètres actifs (série principale), pointillé pour tous les
+    paramètres.
+    """
+    return _two_series_figure(
+        [
+            (results, "active_mean_variance", "Trait plein : paramètres actifs"),
+            (results, "mean_variance", "Pointillé : tous les paramètres"),
+        ],
+        ["-", "--"],
+    )
+
+
+def observables_figure(local: dict[str, pd.DataFrame], global_: dict[str, pd.DataFrame]):
+    """Variance des paramètres actifs : coût local Z0 (trait plein), global Z⊗n (trait mixte)."""
+    return _two_series_figure(
+        [
+            (local, "active_mean_variance", "Trait plein : coût local Z0 (actifs)"),
+            (global_, "active_mean_variance", "Trait mixte : coût global Z⊗n (actifs)"),
+        ],
+        ["-", "-."],
+    )

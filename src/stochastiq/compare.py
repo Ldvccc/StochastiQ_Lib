@@ -25,6 +25,7 @@ def compare(
     n_samples: int = 1000,
     seed: int | None = None,
     n_seeds: int = 1,
+    observable: str = "Z0",
 ) -> pd.DataFrame:
     """Compare plusieurs ansatz sur leurs statistiques et métriques.
 
@@ -39,6 +40,9 @@ def compare(
     n_seeds : int
         Nombre de graines (seed, seed+1, ...) sur lesquelles répéter chaque
         métrique. Si ``seed`` vaut None, les répétitions sont sans graine.
+    observable : str
+        Coût utilisé pour la variance du gradient : ``"Z0"`` (local, défaut),
+        ``"Zmean"`` ou ``"Zall"`` (global), voir ``gradient_variance_details``.
 
     Retourne
     --------
@@ -46,7 +50,7 @@ def compare(
         Une ligne par circuit (index : nom), colonnes ``n_qubits``,
         ``n_parameters``, ``depth``, ``n_two_qubit_gates``, ``expressibility``,
         ``entangling_capability``, ``gradient_variance`` (variance du gradient
-        moyennée sur tous les paramètres, coût ``"Z0"``),
+        moyennée sur tous les paramètres, pour l'observable choisie),
         ``gradient_variance_active`` (moyennée sur les seuls paramètres
         actifs) et ``inactive_fraction`` (part des paramètres inactifs),
         triée par expressibilité croissante (plus expressif d'abord). Si
@@ -58,7 +62,7 @@ def compare(
     Lève
     ----
     ValueError
-        Si ``n_seeds`` est inférieur à 1.
+        Si ``n_seeds`` est inférieur à 1 ou si l'observable n'est pas supportée.
     """
     if n_seeds < 1:
         raise ValueError("n_seeds doit être supérieur ou égal à 1.")
@@ -75,7 +79,10 @@ def compare(
         }
         for metric, func in _METRICS.items():
             _aggregate(row, metric, [func(ansatz, n_samples=n_samples, seed=s) for s in seeds])
-        details = [gradient_variance_details(ansatz, n_samples=n_samples, seed=s) for s in seeds]
+        details = [
+            gradient_variance_details(ansatz, n_samples=n_samples, observable=observable, seed=s)
+            for s in seeds
+        ]
         _aggregate(row, "gradient_variance", [d["mean_variance"] for d in details])
         _aggregate(row, "gradient_variance_active", [d["active_mean_variance"] for d in details])
         row["inactive_fraction"] = float(np.mean([d["inactive_fraction"] for d in details]))
