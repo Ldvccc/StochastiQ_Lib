@@ -457,3 +457,66 @@ def test_etude_en_mode_proportionnel_rappelle_les_couches():
     at.button(key="bp_run").click().run()
     assert not at.exception
     assert any("Couches : égales au nombre de qubits." in m.value for m in at.tabs[4].markdown)
+
+
+def test_log_ticks_plusieurs_decades():
+    assert ui.log_ticks(0.0004, 0.12) == pytest.approx([0.001, 0.01, 0.1])
+
+
+@pytest.mark.parametrize("vmin, vmax", [(0.02, 0.08), (0.03, 0.03), (0.005, 0.05), (1.5e-6, 4e-6)])
+def test_log_ticks_au_moins_deux_graduations(vmin, vmax):
+    ticks = ui.log_ticks(vmin, vmax)
+    assert len(ticks) >= 2
+    exponents = [math.log10(t) for t in ticks]
+    assert exponents == pytest.approx([round(e) for e in exponents])  # puissances de dix
+    assert all(b == pytest.approx(10 * a) for a, b in zip(ticks, ticks[1:]))  # consécutives
+
+
+def test_log_ticks_puissance_exacte():
+    assert ui.log_ticks(0.01, 0.1) == pytest.approx([0.01, 0.1])
+
+
+@pytest.mark.parametrize("vmin, vmax", [(0, 0.1), (-1, 0.1), (0.1, 0)])
+def test_log_ticks_valeurs_non_positives(vmin, vmax):
+    with pytest.raises(ValueError):
+        ui.log_ticks(vmin, vmax)
+
+
+def test_etiquettes_log_francaises():
+    assert [ui._log_tick(v) for v in (1, 0.1, 0.01, 0.0001)] == ["1", "0,1", "0,01", "0,0001"]
+    assert ui._log_tick(1e-5) == "1e-5"
+    assert ui._log_tick(1.5e-5) == "1,5e-5"
+
+
+def _visible_major_ticks(ax):
+    lo, hi = ax.get_ylim()
+    return [t for t in ax.get_yticks() if lo <= t <= hi]
+
+
+def test_axe_log_au_moins_deux_graduations_et_grille():
+    # Données tenant dans moins d'une décade (cas de l'étude par défaut).
+    results = {
+        "hardware_efficient": pd.DataFrame(
+            {"n_qubits": [2, 3, 4, 5, 6], "mean_variance": [0.0842, 0.0424, 0.0297, 0.0256, 0.0207]}
+        )
+    }
+    ax = ui.scaling_figure(results).axes[0]
+    assert _visible_major_ticks(ax) == pytest.approx([0.01, 0.1])
+    assert len(ax.yaxis.get_minorticklocs()) > 0
+    assert ax.yaxis.get_minor_formatter()(0.02, 0) == ""
+    grid = [line for line in ax.get_ygridlines() if line.get_visible()]
+    assert grid and all(line.get_color() == ui.LINE for line in grid)
+    assert not any(line.get_visible() for line in ax.get_xgridlines())
+
+
+def test_axe_log_plusieurs_decades():
+    results = {
+        "data_reuploading": pd.DataFrame(
+            {"n_qubits": [2, 3, 4, 5], "mean_variance": [0.08, 0.004, 2e-4, 8e-6]}
+        )
+    }
+    ax = ui.scaling_figure(results).axes[0]
+    assert _visible_major_ticks(ax) == pytest.approx(ui.log_ticks(8e-6, 0.08))
+    assert [ax.yaxis.get_major_formatter()(t, 0) for t in _visible_major_ticks(ax)] == [
+        "1e-5", "0,0001", "0,001", "0,01",
+    ]

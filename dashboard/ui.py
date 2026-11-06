@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from matplotlib.ticker import FuncFormatter, NullFormatter
+from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
 from stochastiq import pareto_front
 
@@ -26,6 +26,7 @@ TEXT_MUTED = "#585B7A"
 VIOLET = "#5B4BFF"
 CORAL = "#D42A45"
 VIOLET_LIGHT = "#ECE9FF"
+LINE = "#E1DFEE"
 
 METRICS = ["expressibility", "entangling_capability", "gradient_variance"]
 
@@ -518,15 +519,54 @@ def expressibility_figure(df: pd.DataFrame):
     return fig
 
 
-def _log_tick(value: float, _) -> str:
+def log_ticks(vmin: float, vmax: float) -> list[float]:
+    """Puissances de dix à graduer sur un axe logarithmique couvrant [vmin, vmax].
+
+    Retourne les puissances de dix comprises dans la plage, étendue d'une
+    décade (du côté le plus proche des données) tant qu'il y a moins de
+    deux graduations. Le résultat contient donc toujours au moins deux
+    puissances de dix consécutives.
+
+    Lève
+    ----
+    ValueError
+        Si ``vmin`` ou ``vmax`` est négatif ou nul (un axe logarithmique ne
+        peut pas les représenter : filtrer ces valeurs avant l'appel), ou si
+        ``vmin > vmax``.
+    """
+    if vmin <= 0 or vmax <= 0:
+        raise ValueError("log_ticks attend des valeurs strictement positives.")
+    if vmin > vmax:
+        raise ValueError("log_ticks attend vmin <= vmax.")
+    # Tolérance pour que 0,01 soit bien reconnue comme 10^-2.
+    lo_log, hi_log = math.log10(vmin), math.log10(vmax)
+    lo, hi = math.ceil(lo_log - 1e-9), math.floor(hi_log + 1e-9)
+    while hi - lo + 1 < 2:
+        # Écart (en décades) des données à la puissance de dix inférieure / supérieure.
+        gap_below = lo_log - (lo - 1)
+        gap_above = (hi + 1) - hi_log
+        if gap_below <= gap_above:
+            lo -= 1
+        else:
+            hi += 1
+    return [10.0**k for k in range(lo, hi + 1)]
+
+
+def _log_tick(value: float, _=None) -> str:
+    """Étiquette française d'une graduation logarithmique (« 0,01 », « 1,5e-5 »)."""
     if value <= 0:
         return ""
-    decimals = max(0, -int(math.floor(math.log10(value))))
-    return format_fr(value, decimals)
+    exponent = math.floor(math.log10(value) + 1e-9)
+    if value < 1e-4:
+        mantissa = f"{value / 10**exponent:.2g}".replace(".", ",")
+        return f"{mantissa}e{exponent}"
+    return format_fr(value, max(0, -exponent))
 
 
 # Graduations d'un axe logarithmique, en écriture décimale française.
 FRENCH_LOG_TICKS = FuncFormatter(_log_tick)
+
+LOG_NUMTICKS = 50
 
 
 def pareto_figure(df: pd.DataFrame):
@@ -573,8 +613,10 @@ SCALING_STYLES = [(VIOLET, "o"), (TEXT, "s"), (CORAL, "^"), (TEXT_MUTED, "D")]
 def scaling_figure(results: dict[str, pd.DataFrame]):
     """Variance moyenne du gradient en fonction du nombre de qubits, échelle log."""
     fig, ax = _figure(height=3.6)
+    positive = []
     for (name, df), (color, marker) in zip(results.items(), SCALING_STYLES):
         valid = df["mean_variance"] > 0
+        positive.extend(df.loc[valid, "mean_variance"])
         ax.plot(
             df.loc[valid, "n_qubits"], df.loc[valid, "mean_variance"], color=color,
             marker=marker, linewidth=1.6, markersize=6, label=ansatz_label(name),
@@ -584,8 +626,18 @@ def scaling_figure(results: dict[str, pd.DataFrame]):
     ax.set_ylabel("Variance moyenne du gradient")
     ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
     ax.xaxis.set_major_formatter(FRENCH_TICKS)
+    if positive:
+        ticks = log_ticks(min(positive), max(positive))
+        # Marge de 15 % pour ne pas couper les marqueurs aux extrémités.
+        ax.set_ylim(min(ticks[0], min(positive)) / 1.15, max(ticks[-1], max(positive)) * 1.15)
+        # numticks large : au-dessous du nombre de décades visibles, LogLocator
+        # saute des puissances de dix et supprime les graduations mineures.
+        ax.yaxis.set_major_locator(LogLocator(base=10, numticks=LOG_NUMTICKS))
+        ax.yaxis.set_minor_locator(LogLocator(base=10, subs=range(2, 10), numticks=LOG_NUMTICKS))
     ax.yaxis.set_major_formatter(FRENCH_LOG_TICKS)
     ax.yaxis.set_minor_formatter(NullFormatter())
+    ax.grid(True, which="major", axis="y", color=LINE, linewidth=0.6)
+    ax.set_axisbelow(True)
     ax.legend(frameon=False, fontsize=8, labelcolor=TEXT_MUTED)
     fig.tight_layout()
     return fig
