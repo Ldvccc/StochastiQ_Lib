@@ -386,45 +386,110 @@ def test_figures_pareto_et_echelle():
     assert ax.get_xlabel() == "Expressibilité (plus bas = plus expressif)"
     assert ax.xaxis.get_major_formatter()(0.25, 0) == "0,25"
     results = {
-        "hardware_efficient": pd.DataFrame({"n_qubits": [2, 3, 4], "mean_variance": [0.1, 0.05, 0.02]}),
-        "data_reuploading": pd.DataFrame({"n_qubits": [2, 3, 4], "mean_variance": [0.08, 0.04, 0.03]}),
+        "hardware_efficient": _scaling_df([0.1, 0.05, 0.02], [0.12, 0.08, 0.07]),
+        "data_reuploading": _scaling_df([0.08, 0.04, 0.03], [0.1, 0.06, 0.05]),
     }
     fig = ui.scaling_figure(results)
     ax = fig.axes[0]
     assert ax.get_yscale() == "log"
-    assert [line.get_marker() for line in ax.get_lines()] == ["o", "s"]
+    lines = ax.get_lines()
+    # Par ansatz : actifs (trait plein) puis tous (pointillé), même couleur et même marqueur.
+    assert [line.get_marker() for line in lines] == ["o", "o", "s", "s"]
+    assert [line.get_linestyle() for line in lines] == ["-", "--", "-", "--"]
+    assert lines[0].get_color() == lines[1].get_color()
+    legend = [text.get_text() for text in ax.get_legend().get_texts()]
+    assert legend == [
+        "HardwareEfficient",
+        "DataReuploading",
+        "Trait plein : paramètres actifs",
+        "Pointillé : tous les paramètres",
+    ]
     assert ax.yaxis.get_major_formatter()(0.01, 0) == "0,01"
     assert ax.yaxis.get_major_formatter()(1, 0) == "1"
 
 
+def _scaling_df(all_params, active, inactive=None) -> pd.DataFrame:
+    n = list(range(2, 2 + len(all_params)))
+    return pd.DataFrame(
+        {
+            "n_qubits": n,
+            "mean_variance": all_params,
+            "active_mean_variance": active,
+            "inactive_fraction": inactive if inactive is not None else [0.25] * len(n),
+        }
+    )
+
+
+def _entry(active_factor, active_r2, all_factor, all_r2=0.99) -> dict:
+    return {
+        "active": {"factor_per_qubit": active_factor, "r2": active_r2, "n_points": 5},
+        "all": {"factor_per_qubit": all_factor, "r2": all_r2, "n_points": 5},
+        "inactive_fraction": 0.4,
+    }
+
+
 def test_phrase_decroissance_nette():
-    fit = {"factor_per_qubit": 0.5, "r2": 0.99, "n_points": 5}
-    sentence = ui.scaling_sentence("hardware_efficient", fit)
-    assert "la variance est multipliée par 0,50 à chaque qubit ajouté" in sentence
+    sentence = ui.scaling_sentence("data_reuploading", _entry(0.5, 0.99, 0.45))
+    assert "paramètres actifs : la variance est multipliée par 0,50 à chaque qubit ajouté" in sentence
     assert "R² = 0,990" in sentence
-    assert "plateau stérile" in sentence
+    assert "plateau stérile sur cette plage de qubits, avec cette observable" in sentence
+    assert ui.DILUTION_SENTENCE not in sentence
 
 
 @pytest.mark.parametrize(
-    "fit",
+    "entry",
     [
-        {"factor_per_qubit": 0.9, "r2": 0.99, "n_points": 5},  # décroissance lente
-        {"factor_per_qubit": 0.5, "r2": 0.6, "n_points": 5},  # ajustement médiocre
+        _entry(0.9, 0.99, 0.85),  # décroissance lente
+        _entry(0.5, 0.6, 0.5),  # ajustement médiocre
     ],
 )
-def test_phrase_decroissance_non_nette(fit):
-    sentence = ui.scaling_sentence("data_reuploading", fit)
+def test_phrase_decroissance_non_nette(entry):
+    sentence = ui.scaling_sentence("data_reuploading", entry)
     assert "pas de décroissance exponentielle nette sur cette plage" in sentence
     assert "plateau stérile" not in sentence
 
 
-def test_phrase_et_tableau_donnees_insuffisantes():
-    fit = {"factor_per_qubit": None, "r2": None, "n_points": 2}
-    assert "données insuffisantes" in ui.scaling_sentence("brick_wall", fit)
-    table = ui.scaling_table({"brick_wall": fit, "all_to_all": {"factor_per_qubit": 0.71, "r2": 0.95, "n_points": 4}})
-    assert table.index.tolist() == ["BrickWall", "AllToAll"]
-    assert table["Facteur par qubit ajouté"].tolist() == ["données insuffisantes", "×0,71"]
-    assert table["R²"].tolist() == ["n/a", "0,950"]
+def test_phrase_dilution():
+    # Actifs : quasi constant ; tous : baisse nette, due aux paramètres inactifs.
+    sentence = ui.scaling_sentence("hardware_efficient", _entry(0.95, 0.4, 0.72, 0.91))
+    assert "pas de décroissance exponentielle nette sur cette plage" in sentence
+    assert "Sur tous les paramètres, le facteur est 0,72." in sentence
+    assert sentence.endswith(ui.DILUTION_SENTENCE)
+    assert "plateau stérile" not in sentence
+
+
+def test_pas_de_dilution_si_la_moyenne_globale_decroit_moins_vite():
+    # Mode proportionnel : la part d'inactifs baisse, la moyenne globale décroît moins vite.
+    sentence = ui.scaling_sentence("data_reuploading", _entry(0.4, 0.99, 0.6))
+    assert ui.DILUTION_SENTENCE not in sentence
+
+
+def test_resume_et_tableau_deux_series():
+    results = {
+        "hardware_efficient": _scaling_df(
+            [0.0842, 0.0424, 0.0297, 0.0256, 0.0207],
+            [0.112, 0.069, 0.065, 0.070, 0.068],
+            [0.25, 0.39, 0.54, 0.63, 0.69],
+        ),
+        "brick_wall": _scaling_df([0.05, 0.0], [0.07, 0.0]),
+    }
+    summary = ui.scaling_summary(results)
+    assert summary["hardware_efficient"]["all"]["factor_per_qubit"] < 0.8
+    assert summary["hardware_efficient"]["active"]["factor_per_qubit"] > 0.85
+    assert summary["hardware_efficient"]["inactive_fraction"] == pytest.approx(0.5)
+    table = ui.scaling_table(summary)
+    assert table.index.tolist() == ["HardwareEfficient", "BrickWall"]
+    assert list(table.columns) == [
+        "Facteur par qubit (actifs)",
+        "R² (actifs)",
+        "Facteur par qubit (tous)",
+        "R² (tous)",
+        "Paramètres inactifs (moyenne)",
+    ]
+    assert table.loc["HardwareEfficient", "Paramètres inactifs (moyenne)"] == "50,0 %"
+    assert table.loc["BrickWall", "Facteur par qubit (actifs)"] == "données insuffisantes"
+    assert table.loc["BrickWall", "R² (tous)"] == "n/a"
+    assert "données insuffisantes" in ui.scaling_sentence("brick_wall", summary["brick_wall"])
 
 
 def test_curseur_couches_desactive_en_mode_proportionnel():
@@ -498,8 +563,8 @@ def _visible_major_ticks(ax):
 def test_axe_log_au_moins_deux_graduations_et_grille():
     # Données tenant dans moins d'une décade (cas de l'étude par défaut).
     results = {
-        "hardware_efficient": pd.DataFrame(
-            {"n_qubits": [2, 3, 4, 5, 6], "mean_variance": [0.0842, 0.0424, 0.0297, 0.0256, 0.0207]}
+        "hardware_efficient": _scaling_df(
+            [0.0842, 0.0424, 0.0297, 0.0256, 0.0207], [0.0842, 0.069, 0.065, 0.070, 0.068]
         )
     }
     ax = ui.scaling_figure(results).axes[0]
@@ -513,9 +578,7 @@ def test_axe_log_au_moins_deux_graduations_et_grille():
 
 def test_axe_log_plusieurs_decades():
     results = {
-        "data_reuploading": pd.DataFrame(
-            {"n_qubits": [2, 3, 4, 5], "mean_variance": [0.08, 0.004, 2e-4, 8e-6]}
-        )
+        "data_reuploading": _scaling_df([0.08, 0.004, 2e-4, 8e-6], [0.08, 0.005, 3e-4, 1e-5])
     }
     ax = ui.scaling_figure(results).axes[0]
     assert _visible_major_ticks(ax) == pytest.approx(ui.log_ticks(8e-6, 0.08))

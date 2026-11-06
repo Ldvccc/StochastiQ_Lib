@@ -20,7 +20,6 @@ from stochastiq import (  # noqa: E402
     entangling_capability,
     expressibility,
     fidelity_histogram,
-    fit_decay,
     gradient_scaling,
     gradient_variance_details,
     hardware_cost,
@@ -301,13 +300,10 @@ with tab_barren:
         fig = ui.scaling_figure(results)
         st.pyplot(fig)
         plt.close(fig)
-        fits = {
-            bp_name: fit_decay(df["n_qubits"], df["mean_variance"])
-            for bp_name, df in results.items()
-        }
-        st.table(ui.scaling_table(fits))
+        summary = ui.scaling_summary(results)
+        st.table(ui.scaling_table(summary))
         lines = [ui.layers_line(*st.session_state["barren_layers"])]
-        lines += [ui.scaling_sentence(bp_name, fit) for bp_name, fit in fits.items()]
+        lines += [ui.scaling_sentence(bp_name, entry) for bp_name, entry in summary.items()]
         st.markdown("  \n".join(lines))
         ui.note(
             "Résultat sur une observable locale Z0 ; il dépend de l'observable et du "
