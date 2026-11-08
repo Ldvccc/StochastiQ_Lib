@@ -23,6 +23,8 @@ dashboard = ["streamlit", "matplotlib", "pylatexenc"]
 verify = ["pennylane"]
 # OpenQASM 3 pour les ansatz du client (custom_ansatz.load_qasm).
 qasm3 = ["qiskit_qasm3_import"]
+# Bruit simulé (noise.py), en matrice densité.
+noise = ["qiskit-aer"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
