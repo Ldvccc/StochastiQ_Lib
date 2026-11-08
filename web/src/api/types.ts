@@ -20,6 +20,7 @@ export interface Project {
   name: string;
   slug: string;
   description: string;
+  share_results: boolean;
   created_by: number | null;
   created_at: string;
   role: Role;
