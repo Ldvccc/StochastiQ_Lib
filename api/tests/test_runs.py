@@ -58,7 +58,8 @@ def test_cycle_de_vie_d_un_run(client, owner_project, kind):
     assert run["started_at"] and run["finished_at"]
     result = run["result"]
     if kind == "diagnostic":
-        assert set(result) == {"expressibility", "entangling_capability", "gradient", "stats", "histogram"}
+        assert set(result) == {"expressibility", "entangling_capability", "gradient", "stats", "histogram", "noise"}
+        assert result["noise"] is None  # sans noise_profile
         assert set(result["histogram"]) == {"edges", "circuit", "haar"}
         assert set(result["gradient"]) >= {"mean_variance", "active_mean_variance", "inactive_fraction"}
         assert result["stats"]["n_qubits"] == 2
