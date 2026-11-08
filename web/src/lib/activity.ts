@@ -6,6 +6,7 @@ const KIND_LABELS: Record<string, string> = {
   compare: "comparaison",
   scaling: "étude de plateau stérile",
   hardware: "coût matériel",
+  training: "entraînement",
 };
 
 function role(value: unknown): string {

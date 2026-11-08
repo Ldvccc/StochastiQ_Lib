@@ -11,6 +11,9 @@ import numpy as np
 
 from stochastiq import (
     build_ansatz,
+    classical_baselines,
+    problem_features,
+    train_qcbm,
     build_from_spec,
     load_qasm,
     validate_ansatz,
@@ -126,7 +129,22 @@ def _hardware(p: dict) -> dict:
     return hardware_cost(ansatz, topology=p["topology"], seed=p["seed"])
 
 
-KINDS = {"diagnostic": _diagnostic, "compare": _compare, "scaling": _scaling, "hardware": _hardware}
+def _training(p: dict) -> dict:
+    ansatz = make_circuit(p["ansatz"], p["n_qubits"], p["layers"])
+    result = train_qcbm(
+        ansatz,
+        p["target"],
+        loss=p["loss"],
+        optimizer=p["optimizer"],
+        max_iter=p["max_iter"],
+        learning_rate=p["learning_rate"],
+        shots=p["shots"],
+        seed=p["seed"],
+    )
+    return {**result, "baselines": classical_baselines(p["target"]), "problem_features": problem_features(p["target"])}
+
+
+KINDS = {"diagnostic": _diagnostic, "compare": _compare, "scaling": _scaling, "hardware": _hardware, "training": _training}
 
 
 def execute(kind: str, params: dict) -> dict:

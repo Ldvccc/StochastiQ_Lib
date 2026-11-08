@@ -9,7 +9,7 @@ reproductible tel quel, même si l'ansatz est ensuite modifié ou supprimé.
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from .models import CustomAnsatz
+from .models import CustomAnsatz, Problem
 from .routers.custom_ansatz import build_circuit
 
 
@@ -37,9 +37,19 @@ def _check_buildable(custom: dict, n_qubits: int, layers: int) -> None:
         raise HTTPException(422, f"« {custom['name']} » : {error}") from error
 
 
+def resolve_problem(db: Session, project_id: int, params: dict) -> dict:
+    """Copie la distribution cible du problème dans les paramètres (run reproductible tel quel)."""
+    problem = db.get(Problem, params["problem_id"])
+    if problem is None or problem.project_id != project_id:
+        raise HTTPException(422, f"Problème n° {params['problem_id']} introuvable dans ce projet.")
+    return {**params, "n_qubits": problem.n_qubits, "problem_name": problem.name, "target": problem.probabilities}
+
+
 def resolve_params(db: Session, project_id: int, kind: str, params: dict) -> dict:
-    """Remplace les identifiants d'ansatz personnalisés et vérifie qu'ils sont constructibles."""
+    """Remplace les identifiants (problème, ansatz personnalisés) et vérifie que les ansatz sont constructibles."""
     params = dict(params)
+    if kind == "training":
+        params = resolve_problem(db, project_id, params)
     single = not isinstance(params.get("ansatz"), list)
     refs = [params["ansatz"]] if single else params["ansatz"]
     resolved = [_resolve_one(db, project_id, ref) for ref in refs]

@@ -18,6 +18,7 @@ export const KIND_LABELS: Record<string, string> = {
   compare: "Comparaison",
   scaling: "Plateau stérile",
   hardware: "Coût matériel",
+  training: "Entraînement",
 };
 
 const PAGE_SIZE = 20;

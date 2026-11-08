@@ -324,6 +324,13 @@ const PARAM_LABELS: Record<string, string> = {
   qubit_max: "Qubits max",
   layers_mode: "Mode de couches",
   compare_observables: "Comparer local et global",
+  problem_id: "Problème (n°)",
+  problem_name: "Problème",
+  loss: "Perte",
+  optimizer: "Optimiseur",
+  max_iter: "Itérations",
+  learning_rate: "Pas d'apprentissage",
+  shots: "Tirages",
 };
 
 function paramValue(value: unknown): string {
@@ -334,7 +341,16 @@ function paramValue(value: unknown): string {
   return String(value);
 }
 
-const SCREENS: Record<RunKind, string> = { diagnostic: "diagnostic", compare: "comparateur", scaling: "plateau-sterile", hardware: "jobs?tab=materiel&" };
+const SCREENS: Record<RunKind, string> = {
+  diagnostic: "diagnostic",
+  compare: "comparateur",
+  scaling: "plateau-sterile",
+  hardware: "jobs?tab=materiel&",
+  training: "entrainement",
+};
+
+// Paramètres recopiés pour la reproductibilité, trop longs pour être affichés (vecteur cible).
+const HIDDEN_PARAMS = new Set(["target"]);
 
 export function RunDetailPage() {
   const { project } = useProject();
@@ -354,7 +370,9 @@ export function RunDetailPage() {
         <h2 id="parametres">Paramètres</h2>
         <table>
           <tbody>
-            {Object.entries(run.params).map(([key, value]) => (
+            {Object.entries(run.params)
+              .filter(([key]) => !HIDDEN_PARAMS.has(key))
+              .map(([key, value]) => (
               <tr key={key}>
                 <th scope="row">{PARAM_LABELS[key] ?? key}</th>
                 <td>{paramValue(value)}</td>
