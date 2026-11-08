@@ -118,14 +118,28 @@ def test_preuve_selon_le_cas():
     final_ok = prediction(0.10, True, 0.05, 0.05, 0.20)
     final_ko = prediction(0.10, False, 0.07, message="Intervalle non fiable pour ce cas : couverture mesurée 52,4 %.")
     degradation_ko = prediction(0.02, False, 0.02, message="Intervalle non fiable pour ce cas : couverture mesurée 66,8 %.")
-    assert _compared({"final_tvd": final_ok, "degradation": None}, None, False)["evidence"] == "interval"
-    sans_intervalle = _compared({"final_tvd": final_ko, "degradation": None}, None, False)
+    assert _compared({"final_tvd": final_ok, "degradation": None}, None, False, 0.1)["evidence"] == "interval"
+    sans_intervalle = _compared({"final_tvd": final_ko, "degradation": None}, None, False, 0.1)
     assert sans_intervalle["evidence"] == "margin" and sans_intervalle["margin"] == pytest.approx(0.14)
     noisy = {"value": 0.12, "low": None, "high": None, "interval_reliable": False}
-    combine = _compared({"final_tvd": final_ko, "degradation": degradation_ko, "noisy_tvd": noisy}, None, True)
+    combine = _compared({"final_tvd": final_ko, "degradation": degradation_ko, "noisy_tvd": noisy}, None, True, 0.1)
     assert combine["margin"] == pytest.approx(2 * (0.07 + 0.02))
     mesure = {"run_id": 3, "tvd": 0.06, "noisy_tvd": None}
-    partielle = _compared({"final_tvd": final_ko, "degradation": degradation_ko, "noisy_tvd": noisy}, mesure, True)
-    assert partielle["evidence"] == "margin" and partielle["value"] == pytest.approx(0.08)
-    assert partielle["margin"] == pytest.approx(0.04)
-    assert _compared({"final_tvd": final_ko, "degradation": None}, mesure, False)["evidence"] == "measured"
+    assert _compared({"final_tvd": final_ko, "degradation": None}, mesure, False, 0.1)["evidence"] == "measured"
+
+
+def test_mesure_et_degradation_predite_sans_intervalle():
+    # Marge = 0,1 × meilleure TVD classique (une seule initialisation) + 2 × MAE de la dégradation.
+    final_ko = prediction(0.10, False, 0.07)
+    degradation_ko = prediction(0.02, False, 0.02, message="Intervalle non fiable pour ce cas : couverture mesurée 66,8 %.")
+    noisy = {"value": 0.12, "low": None, "high": None, "interval_reliable": False}
+    mesure = {"run_id": 3, "tvd": 0.06, "noisy_tvd": None}
+    partielle = _compared({"final_tvd": final_ko, "degradation": degradation_ko, "noisy_tvd": noisy}, mesure, True, 0.0588)
+    assert partielle["evidence"] == "margin"
+    assert partielle["source"] == "measured_degradation_predicted"
+    assert partielle["value"] == pytest.approx(0.08)  # 0,06 mesuré + 0,02 prédit
+    assert partielle["margin"] == pytest.approx(0.1 * 0.0588 + 2 * 0.02)
+    # Avec cette marge, 0,08 contre 0,0588 : 0,08 − 0,04588 = 0,034 n'est pas au-dessus de 0,0588, donc indéterminé.
+    candidat = {"key": "A", **{k: partielle[k] for k in ("value", "low", "high", "margin", "evidence")}}
+    autre = {"key": "B", "value": 0.3, "evidence": "interval", "low": 0.25, "high": 0.35, "margin": None}
+    assert decide([candidat, autre], 0.0588, 400)["verdict"] == "undetermined"

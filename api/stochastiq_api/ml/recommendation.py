@@ -14,7 +14,10 @@ effectif et la règle de verdict (dérogation validée par l'auteur au jalon 8) 
 - ``margin`` (prédiction sans intervalle fiable) : marge de 2 × l'erreur
   absolue moyenne de validation du cas comparable ; « probably_justified » si
   valeur + marge < TVD classique, « probably_not_justified » si valeur − marge
-  > TVD classique, sinon « undetermined ».
+  > TVD classique, sinon « undetermined ». Pour une TVD mesurée combinée à une
+  dégradation prédite sans intervalle, la marge couvre aussi l'incertitude de
+  la mesure (une seule initialisation) : 0,1 × meilleure TVD classique + 2 ×
+  erreur moyenne de la dégradation.
 
 Le verdict suit la preuve de l'ansatz classé premier (valeur la plus basse).
 Les ansatz dont l'intervalle effectif recoupe le sien lui sont
@@ -144,7 +147,7 @@ def existing_trainings(db, project_id: int, params: dict) -> list:
 # ---- Côté calcul (processus séparé, sans base) ----
 
 
-def _compared(prediction: dict, measured: dict | None, noisy: bool) -> dict:
+def _compared(prediction: dict, measured: dict | None, noisy: bool, classical_tvd: float) -> dict:
     """Valeur comparée d'un ansatz : valeur, intervalle, marge, nature de la preuve et source."""
     final, degradation = prediction["final_tvd"], prediction["degradation"]
     if measured is not None and (not noisy or measured["noisy_tvd"] is not None):
@@ -157,7 +160,9 @@ def _compared(prediction: dict, measured: dict | None, noisy: bool) -> dict:
         if degradation["interval_reliable"]:
             return {"value": value, "low": measured["tvd"] + degradation["low"], "high": measured["tvd"] + degradation["high"],
                     "margin": None, "evidence": "interval", "source": source, "interval_message": None}
-        return {"value": value, "low": None, "high": None, "margin": MAE_MARGIN_FACTOR * degradation["mae"],
+        # Incertitude de la mesure (une seule initialisation) plus celle de la dégradation prédite.
+        margin = RELATIVE_MARGIN * classical_tvd + MAE_MARGIN_FACTOR * degradation["mae"]
+        return {"value": value, "low": None, "high": None, "margin": margin,
                 "evidence": "margin", "source": source, "interval_message": degradation["interval_message"]}
     if not noisy:
         if final["interval_reliable"]:
@@ -203,6 +208,9 @@ def run_recommendation(p: dict, models_dir: str | None) -> dict:
     if bundle is None:
         raise RuntimeError(NO_MODEL)
     features = problem_features(p["target"])
+    baselines = classical_baselines(p["target"])
+    tvds = {name: b["metrics"]["tvd"] for name, b in baselines.items()}
+    best = min(tvds, key=tvds.get)
     profile = p.get("noise_profile")
     noisy = profile is not None
     items, keys = [], set()
@@ -230,12 +238,9 @@ def run_recommendation(p: dict, models_dir: str | None) -> dict:
                 },
                 "prediction": predicted,
                 "measured": measured,
-                **_compared(predicted, measured, noisy),
+                **_compared(predicted, measured, noisy, tvds[best]),
             }
         )
-    baselines = classical_baselines(p["target"])
-    tvds = {name: b["metrics"]["tvd"] for name, b in baselines.items()}
-    best = min(tvds, key=tvds.get)
     candidates = [
         {key: i[key] for key in ("key", "value", "low", "high", "margin", "evidence")}
         for i in items
