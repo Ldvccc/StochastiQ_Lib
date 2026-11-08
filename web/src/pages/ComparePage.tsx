@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { ParetoScatter } from "../components/charts";
 import { ErrorState, GuardedButton } from "../components/common";
 import { useProject } from "../components/ProjectContext";
-import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzCatalog } from "../components/science";
+import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzOptions } from "../components/science";
 import { formatMetric, formatPercent } from "../lib/format";
 import { ansatzLabel, compareSentence, LOW_SAMPLES_THRESHOLD, LOW_SAMPLES_WARNING, PARETO_NOTE, paretoSentence, type CompareRow } from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
@@ -65,22 +65,24 @@ export function CompareTable({ rows }: { rows: CompareRow[] }) {
 
 export function ComparePage() {
   const { project, can, reason } = useProject();
-  const catalog = useAnsatzCatalog();
+  const catalog = useAnsatzOptions(project.id);
   const [params, setParams] = useSearchParams();
   const runId = params.get("run") ? Number(params.get("run")) : null;
   const { run, error: pollError } = useRunPolling<{ rows: CompareRow[] }>(project.id, runId);
-  const [selected, setSelected] = useState<string[]>(["hardware_efficient", "strongly_entangling", "data_reuploading"]);
+  const [selected, setSelected] = useState<string[]>(["cat:hardware_efficient", "cat:strongly_entangling", "cat:data_reuploading"]);
   const [form, setForm] = useState({ n_qubits: 4, layers: 3, n_samples: 1000, n_seeds: 1, seed: 0 });
   const [error, setError] = useState<string | null>(null);
   const errors = boundErrors(form);
-  const invalid = Object.keys(errors).length > 0 || selected.length === 0;
+  const chosen = (catalog.data ?? []).filter((o) => selected.includes(o.value));
+  const wrongSize = chosen.filter((o) => o.fixedQubits !== null && o.fixedQubits !== form.n_qubits);
+  const invalid = Object.keys(errors).length > 0 || chosen.length === 0 || wrongSize.length > 0;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (invalid) return;
     setError(null);
     try {
-      const created = await launchRun(project.id, "compare", { ansatz: selected, ...form });
+      const created = await launchRun(project.id, "compare", { ansatz: chosen.map((o) => o.ref), ...form });
       setParams({ run: String(created.id) });
     } catch (err) {
       setError((err as Error).message);
@@ -101,13 +103,18 @@ export function ComparePage() {
           <legend style={{ fontWeight: 500, marginBottom: 8 }}>Ansatz à comparer</legend>
           <div className="row">
             {(catalog.data ?? []).map((a) => (
-              <label key={a.name} style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }}>
-                <input type="checkbox" checked={selected.includes(a.name)} onChange={() => toggle(a.name)} style={{ minHeight: 0, width: 20, height: 20 }} />
+              <label key={a.value} style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }}>
+                <input type="checkbox" checked={selected.includes(a.value)} onChange={() => toggle(a.value)} style={{ minHeight: 0, width: 20, height: 20 }} />
                 {a.label}
               </label>
             ))}
           </div>
-          {selected.length === 0 && <span className="field-error">Sélectionnez au moins un ansatz.</span>}
+          {chosen.length === 0 && <span className="field-error">Sélectionnez au moins un ansatz.</span>}
+          {wrongSize.length > 0 && (
+            <span className="field-error">
+              {wrongSize.map((o) => o.label).join(", ")} : nombre de qubits fixé différent de {form.n_qubits}.
+            </span>
+          )}
         </fieldset>
         <div className="row">
           <NumberField label="Qubits" value={form.n_qubits} min={2} max={8} onChange={set("n_qubits")} error={errors.n_qubits} />

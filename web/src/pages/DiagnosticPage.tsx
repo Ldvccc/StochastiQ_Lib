@@ -5,13 +5,13 @@ import { api } from "../api/client";
 import { FidelityHistogram, histogramRows, type Histogram } from "../components/charts";
 import { ErrorState, GuardedButton } from "../components/common";
 import { useProject } from "../components/ProjectContext";
-import { CommentsPanel, CsvButton, MetricCard, NumberField, RunStatusBanner, useAnsatzCatalog } from "../components/science";
+import { CommentsPanel, CsvButton, MetricCard, NumberField, RunStatusBanner, useAnsatzOptions, type AnsatzOption } from "../components/science";
 import { formatMetric, formatPercent } from "../lib/format";
-import { ansatzLabel, LOW_SAMPLES_THRESHOLD, LOW_SAMPLES_WARNING } from "../lib/reading";
+import { LOW_SAMPLES_THRESHOLD, LOW_SAMPLES_WARNING, refLabel } from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
 
 export interface DiagnosticForm {
-  ansatz: string;
+  ansatz: string; // valeur d'option : "cat:<nom>" ou "custom:<id>"
   n_qubits: number;
   layers: number;
   n_samples: number;
@@ -48,7 +48,7 @@ export function DiagnosticFormFields({
   form: DiagnosticForm;
   setForm: (form: DiagnosticForm) => void;
   errors: Record<string, string>;
-  ansatzOptions: { name: string; label: string }[];
+  ansatzOptions: { value: string; label: string }[];
 }) {
   const set = (key: keyof DiagnosticForm) => (value: number) => setForm({ ...form, [key]: value });
   return (
@@ -57,7 +57,7 @@ export function DiagnosticFormFields({
         Ansatz
         <select value={form.ansatz} onChange={(e) => setForm({ ...form, ansatz: e.target.value })}>
           {ansatzOptions.map((a) => (
-            <option key={a.name} value={a.name}>
+            <option key={a.value} value={a.value}>
               {a.label}
             </option>
           ))}
@@ -83,15 +83,20 @@ export function DiagnosticFormFields({
 
 export function DiagnosticPage() {
   const { project, can, reason } = useProject();
-  const catalog = useAnsatzCatalog();
+  const catalog = useAnsatzOptions(project.id);
   const [params, setParams] = useSearchParams();
   const runId = params.get("run") ? Number(params.get("run")) : null;
   const { run, error: pollError } = useRunPolling<DiagnosticResult>(project.id, runId);
-  const [form, setForm] = useState<DiagnosticForm>({ ansatz: "hardware_efficient", n_qubits: 4, layers: 3, n_samples: 1000, seed: 0, observable: "Z0" });
+  const [form, setForm] = useState<DiagnosticForm>({ ansatz: "cat:hardware_efficient", n_qubits: 4, layers: 3, n_samples: 1000, seed: 0, observable: "Z0" });
   const [error, setError] = useState<string | null>(null);
   const [pinMessage, setPinMessage] = useState<string | null>(null);
+  const options: AnsatzOption[] = catalog.data ?? [];
+  const option = options.find((o) => o.value === form.ansatz);
   const errors = validateDiagnostic(form);
-  const invalid = Object.keys(errors).length > 0;
+  if (!errors.n_qubits && option?.fixedQubits && form.n_qubits !== option.fixedQubits) {
+    errors.n_qubits = `Cet ansatz fixe ${option.fixedQubits} qubits.`;
+  }
+  const invalid = Object.keys(errors).length > 0 || !option;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -99,7 +104,7 @@ export function DiagnosticPage() {
     setError(null);
     setPinMessage(null);
     try {
-      const created = await launchRun(project.id, "diagnostic", { ...form });
+      const created = await launchRun(project.id, "diagnostic", { ...form, ansatz: option!.ref });
       setParams({ run: String(created.id) });
     } catch (err) {
       setError((err as Error).message);
@@ -108,7 +113,7 @@ export function DiagnosticPage() {
 
   async function pin() {
     if (!run) return;
-    const p = run.params as unknown as DiagnosticForm;
+    const p = run.params as unknown as { ansatz: unknown; n_qubits: number; layers: number };
     try {
       await api.post(`/projects/${project.id}/pins`, { ansatz: p.ansatz, n_qubits: p.n_qubits, layers: p.layers });
       setPinMessage("Circuit épinglé : il apparaît dans l'onglet Circuits épinglés du projet.");
@@ -119,7 +124,6 @@ export function DiagnosticPage() {
 
   const result = run?.status === "done" ? run.result : null;
   const runParams = run?.params as unknown as DiagnosticForm | undefined;
-  const options = (catalog.data ?? []).map((a) => ({ name: a.name, label: a.label }));
 
   return (
     <>
@@ -139,7 +143,7 @@ export function DiagnosticPage() {
       {result && runParams && (
         <>
           <p className="muted">
-            Run n° {run!.id} : {ansatzLabel(runParams.ansatz)}, {runParams.n_qubits} qubits, {runParams.layers} couches, {runParams.n_samples} échantillons,
+            Run n° {run!.id} : {refLabel(runParams.ansatz)}, {runParams.n_qubits} qubits, {runParams.layers} couches, {runParams.n_samples} échantillons,
             graine {runParams.seed}, observable {OBSERVABLE_LABELS[runParams.observable as "Z0" | "Zall"] ?? runParams.observable}.
           </p>
           <div className="grid-3" style={{ marginBottom: 20 }}>
@@ -171,7 +175,12 @@ export function DiagnosticPage() {
             <p className="muted">Plus bas = plus expressif : l'expressibilité mesure l'écart entre l'histogramme du circuit (barres) et la référence de Haar (courbe).</p>
             <div className="row">
               <CsvButton filename={`diagnostic-${run!.id}.csv`} rows={histogramRows(result.histogram)} params={{ ...runParams }} />
-              <GuardedButton className="secondary" allowed={can("pin")} reason={reason("pin")} onClick={pin}>
+              <GuardedButton
+                className="secondary"
+                allowed={can("pin") && typeof runParams.ansatz === "string"}
+                reason={typeof runParams.ansatz === "string" ? reason("pin") : "Seuls les ansatz du catalogue peuvent être épinglés."}
+                onClick={pin}
+              >
                 Épingler ce circuit
               </GuardedButton>
             </div>
