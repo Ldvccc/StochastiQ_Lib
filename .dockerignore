@@ -9,3 +9,6 @@ dashboard
 examples
 tests
 docs
+# Modèles locaux : le conteneur entraîne le sien dans le volume.
+models
+api/models

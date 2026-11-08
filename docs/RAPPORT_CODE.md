@@ -1,4 +1,4 @@
-# Rapport 2 : le code de StochastiQ expliqué en détail (version 0.2.0)
+# Rapport 2 : le code de StochastiQ expliqué en détail (version 0.3.0)
 
 Ce rapport explique **comment** le projet est construit : l'environnement, chaque fichier, les choix d'implémentation, les pièges déjà rencontrés et la façon d'étendre le code. Lisez d'abord le rapport 1 (`docs/RAPPORT_FONCTIONNALITES.md`), qui décrit ce que fait le projet et les conventions de l'auteur.
 
@@ -8,8 +8,8 @@ Ce rapport explique **comment** le projet est construit : l'environnement, chaqu
 
 - **OS** : Windows 11, avec PowerShell et Git Bash. Dossier : `C:\Users\ldvcb\Desktop\Sto\StochastiQ_Lib`.
 - **Python** : `.venv` (Python 3.12.10, pyenv-win) à la racine. Tout y est installé en mode éditable :
-  - `pip install -e ".[dev,dashboard,examples,verify]"` ;
-  - `pip install -e "./api[dev]"`.
+  - `pip install -e ".[dev,dashboard,examples,verify,noise,qasm3]"` ;
+  - `pip install -e "./api[dev]"` (comprend qiskit-aer, qiskit_qasm3_import, scikit-learn et joblib).
 
   Versions notables : qiskit 2.6.x, numpy 2.5, pandas, PennyLane 0.45.1, streamlit 1.66, fastapi 0.162, SQLAlchemy 2.1, alembic 1.20, pydantic 2.14, PyJWT 2.15, argon2-cffi 25.1.
 
@@ -21,7 +21,7 @@ Ce rapport explique **comment** le projet est construit : l'environnement, chaqu
   - **`sed`** : il mange les séquences `\u202f`. Utiliser l'outil d'édition pour les remplacements délicats.
   - **Chemins Git Bash** : Git Bash convertit `/app/...` en chemin Windows dans les commandes `docker exec`. Préfixer par `MSYS_NO_PATHCONV=1`. PowerShell n'a pas ce problème.
   - **Console** : elle est en cp1252. Pour afficher les accents d'un script Python : `PYTHONIOENCODING=utf-8`.
-  - **Processus** : sous Windows, `ProcessPoolExecutor` utilise *spawn*. Les fonctions envoyées au worker doivent donc être importables au niveau d'un module (c'est le cas de `stochastiq_api.runner.execute`).
+  - **Processus** : `ProcessPoolExecutor` utilise *spawn* partout depuis la v0.3 (`MP_CONTEXT` dans `jobs.py`) ; sous Linux, *fork* bloquait un routage Qiskit (section 9.2). Les fonctions envoyées au worker doivent être importables au niveau d'un module (c'est le cas de `stochastiq_api.runner.execute`).
   - **Arrêter un serveur** sur un port : `powershell -Command "Get-NetTCPConnection -LocalPort 8000 -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }"`.
 
 ---
@@ -407,7 +407,84 @@ Pile : Vite 5.4, React 18.3, TypeScript 5.6 (`strict`, `noUnusedLocals`), React 
   2. fonction dans `runner.py`, ajoutée à `KINDS` ;
   3. `RunKind` dans `web/src/api/types.ts`, `KIND_LABELS`, `SCREENS` (JobsPage) et `activity.ts` ;
   4. tests dans `api/tests/test_runs.py` (dict `SMALL`).
-- **Ajouter un champ en base** : modifier le modèle, autogénérer la migration 0003, vérifier `test_migrations.py`.
+- **Ajouter un champ en base** : modifier le modèle, autogénérer la migration suivante (0006 après la v0.3), retirer les commentaires générés, vérifier `test_migrations.py`.
 - **Ajouter un écran web** : page dans `src/pages`, route dans `App.tsx` (en `lazy` si elle utilise Recharts), lien dans `PROJECT_NAV` (Layout).
 - **Changer une règle de lecture** : la modifier **aux deux endroits**, `dashboard/ui.py` et `web/src/lib/reading.ts`, ainsi que leurs tests respectifs (`tests/test_dashboard.py`, `web/src/test/reading.test.ts`).
-- **Commits** : branche dédiée, un commit par bloc, message en français terminé par la ligne `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Pas de push, pas de modification de `main`. Une nouvelle release se fait sur une branche `release/v0.3` créée depuis `release/v0.2`, avec des fusions `--no-ff`, les tests verts à chaque fusion, puis un tag local.
+- **Commits** : branche dédiée, un commit par bloc, message en français terminé par la ligne `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Pas de push, pas de modification de `main`. Une nouvelle release se fait sur une branche `release/v0.4` créée depuis `release/v0.3`, avec des fusions `--no-ff`, les tests verts à chaque fusion, puis un tag local.
+- **Entraîner le modèle de prédiction** : `scripts\train_predictor.py --csv data\results_grid.csv --models-dir api\models` (environ 2 min) ; la grille se reconstruit avec `scripts\build_results.py` (`--measure` d'abord).
+- **Ajouter une référence classique** : fonction dans `src/stochastiq/baselines.py`, entrée dans `classical_baselines`, libellé dans `BASELINE_LABELS` (`web/src/lib/reading.ts`).
+
+---
+
+## 9. Version 0.3.0 : le code ajouté
+
+### 9.1 Bibliothèque (`stochastiq` 0.2.0)
+
+- **`distributions.py`** : fonctions de référence (`gaussian`, `bimodal`, `lognormal`, `uniform`, `bars_and_stripes` — pixel (r, c) → qubit r·cols+c —, `ising_boltzmann(n, beta, seed)` — J_ij ~ N(0, 1), spins s = 1 − 2·bit, sans champ) ; `REFERENCE_DISTRIBUTIONS` (nom → (fonction, aléatoire)), `reference_distribution(nom, n, seed)` ; `from_samples` (variable v sur les qubits v·k.., Gray = b ^ (b >> 1)) ; `from_probabilities` ; `check_probabilities` ; `problem_features` ; `bitstring(i, n)` (non exportée au niveau du paquet).
+- **`ansatz.py`** : `ENTANGLERS` et `entangler_pairs(nom, n, couche)` rendus publics pour les specs.
+- **`custom_ansatz.py`** : `validate_spec`, `spec_qubits`, `build_from_spec` (même ordre des paramètres que `build_ansatz`), `load_qasm` (en-tête `OPENQASM 3` → `qiskit.qasm3.loads`, qui demande `qiskit_qasm3_import` ; sinon qasm2), `validate_ansatz` (portes paramétrées rx/ry/rz avec un `Parameter` nu utilisé une fois, portes fixes de `FIXED_GATES`, bornes), `circuit_structure` (colonnes, type en majuscules, `CNOT` pour cx). Les paramètres QASM 3 suivent l'ordre alphabétique de `qc.parameters`.
+- **`gradients.py`** : `_probability_tensor` (|états|² en tenseur (B, 2, …, 2)) et `batched_probabilities` (B, 2^n) ; `_expectations` s'appuie dessus ; résultats existants inchangés.
+- **`training.py`** : `EPSILON`, `MMD_SIGMAS`, `distribution_metrics`, `mmd_kernel`, `loss_value`, `_loss_derivative`, classe `_Model` (exact par lots bornés à 2^21 amplitudes, ou tirages multinomiaux), `loss_and_gradient` (règle du décalage sur les probabilités : un lot de 2P + 1 circuits), `train_qcbm` (Adam, SPSA, COBYLA ; historique ; métriques finales exactes).
+- **`baselines.py`** : `independent_baseline`, `chow_liu_tree` (Prim depuis le qubit 0), `chow_liu_baseline`, `classical_baselines`.
+- **`noise.py`** (qiskit-aer importé à l'appel seulement) : `PROFILES`, `resolve_profile`, `noise_model` (dépolarisation sur sx/x et cx), `_coupling_map` (heavy-hex refusé), `_apply_readout` (matrice de confusion 2×2 appliquée qubit par qubit au tenseur), `_compile` (transpile cx/rz/sx/x, niveau 1), `transpiled_gate_counts`, `gate_count_fidelity`, `noisy_probabilities` (`save_probabilities` sur les qubits physiques donnés par `layout.final_index_layout()` : ordre logique rétabli, vérifié sans bruit à 1e-9 même avec routage), `noisy_tvd`.
+- **`stats.py`** : `circuit_features` (statistiques plus portes du circuit transpilé sur une ligne).
+- **`scaling.py`** : `gradient_scaling` accepte un constructeur `(n, couches) → QuantumCircuit`.
+- Options de `pyproject.toml` : `noise = ["qiskit-aer"]`, `qasm3 = ["qiskit_qasm3_import"]` ; Qiskit ≥ 1.3 (`real_amplitudes` absent de 1.2.4).
+
+### 9.2 API (0.3.0)
+
+- **Modèles** (`models.py`) : `Problem`, `CustomAnsatz` (contenu = JSON trié pour une spec), `Result`, et `Project.share_results` (booléen, `server_default=false()`). Migrations `0003_problems`, `0004_custom_ansatz`, `0005_results` (autogénérées puis nettoyées ; `sa.false()` pour le défaut).
+- **Routeurs** : `problems.py` (+ `problem_import.py` : lecture CSV en bibliothèque standard, bornes), `custom_ansatz.py` (`check_content`, `build_circuit`, structure), `predict.py` (`PredictIn`, `get_bundle` → 409).
+- **`ansatz_refs.py`** : `resolve_problem` (copie `n_qubits`, `problem_name`, `problem_family` — distribution de référence ou « csv » —, `target`), `resolve_params` (remplace `{"custom_id"}`, vérifie la taille fixée et la constructibilité ; pour une recommandation, ajoute `existing`).
+- **`run_schemas.py`** : `CustomRef`, `AnsatzRef`, `NoiseProfile` (nom ou `CustomNoiseProfile` aux taux bornés), `NoiseTopology`, `TrainingParams` (+ `evaluate_noise`), `NoiseParams`, `RecommendationParams` ; `DiagnosticParams.noise_profile`.
+- **`runner.py`** : `make_circuit(ref, n, couches)`, `ansatz_key`, `_training`, `evaluate_under_noise`, `_noise` ; `execute(kind, params, models_dir)` délègue la recommandation à `ml.recommendation.run_recommendation`.
+- **`jobs.py`** :
+  - `RunManager(sessions, timeout, models_dir)` ;
+  - `_record_results` après un run réussi (un échec ne change pas l'état du run, déjà validé) ;
+  - `MP_CONTEXT = multiprocessing.get_context("spawn")` pour les `ProcessPoolExecutor`. **Piège** : avec `fork` (Linux, Docker), l'enfant hérite du pool de threads Rust de Qiskit, utilisé par une transpilation dans le parent (`circuit_features` dans `_record_results`) ; un routage dans l'enfant se bloque alors. Reproduit dans le conteneur, corrigé au jalon 8.
+- **`ml/`** (seul à dépendre de scikit-learn et joblib) :
+  - `results.py` : `fingerprint` (`cat:<nom>` ou `custom:<sha256 du format et du contenu, 16 caractères>`), `run_rows`, `training_rows`, `noise_row`, `record_run`, `eligible_query`, `flatten` (préfixes `circuit_`, `problem_`, `noise_`, `q_`), `results_frame`, `export_results` ;
+  - `predictor.py` : `TARGETS`, `target_rows`, `References`, `conformal_margin`, `fit_models` (central sur tout le jeu ; quantiles sur 75 % ; marge CQR sur 25 %, graine 0), `predict_models`, `splits` (quatre validations), `validate`, `train_predictor`, `save_bundle` / `load_bundle` (`predictor.joblib`), `report_of`, `matching_validation`, `predict` ;
+  - `service.py` : `feature_row`, `prediction`, `model_info`, `NO_MODEL` ;
+  - `recommendation.py` : `RELATIVE_MARGIN` (0,1), `MAE_MARGIN_FACTOR` (2), `effective_interval`, `verdict_for`, `decide` (verdicts `justified`, `not_justified`, `equivalent`, `probably_justified`, `probably_not_justified`, `undetermined`), `existing_trainings`, `_compared(prédiction, mesure, bruit, TVD classique)` (nature de la preuve : `measured`, `interval`, `margin` ; mesure combinée à une dégradation prédite : intervalle élargi de 0,1 × TVD classique de chaque côté, ou marge de 0,1 × TVD classique + 2 × MAE), `run_recommendation` ; `predict` renvoie aussi `mae` (modèle ou référence retenue) ;
+  - `bootstrap.py` : `ensure_model(models_dir, grille)` → « present », « trained », « no_data » ; `python -m stochastiq_api.ml.bootstrap`.
+- **Réglages** : `models_dir` (`./models` par défaut ; `/data/models` sous Docker).
+- **Tests** : `conftest.py` fournit `GRID`, un `models_dir` temporaire pour chaque test, la fixture de session `bundle` (modèle entraîné sur les lignes à 1 couche de la grille, environ 45 s) et `model_client`.
+
+### 9.3 Application web (0.3.0)
+
+- **Composants** : `charts.tsx` (`DistributionChart`, `LossChart` en échelle log), `CircuitSvg.tsx` (portes génériques), `science.tsx` (`useAnsatzOptions`, `NoiseProfileField`, `noiseProfileValue`, `noiseErrors`).
+- **`lib/reading.ts`** : phrases d'entraînement (règle des 10 %, `RELATIVE_MARGIN`), de bruit (`profileLabel`, `noiseEvaluationSentence`, `degradationSentence`, `NOISE_DISCLAIMER`) et de recommandation (`quotedList`, `recommendationSentences`, `SOURCE_LABELS`).
+- **Pages** : `ProblemsPage`, `CustomAnsatzPage`, `TrainingPage`, `RecommendationPage` (`recommendationErrors`, `RankingTable`, `rankingRows`, `csvRows`), `ReportPage` (`downloadJson`) ; `DiagnosticPage` (carte bruit) ; `ProjectPage` (`ShareResultsCard`) ; `JobsPage` (paramètres masqués `target` et `existing` ; le run `noise` n'a pas d'écran dédié).
+- **`theme.css`** : bloc `@media print` (navigation et `.no-print` masqués, cartes sans ombre).
+- **Playwright** : `playwright.config.ts` entraîne un modèle réduit (`train_predictor.py --csv ../data/results_grid.csv --layers 1`) dans un dossier temporaire avant uvicorn (environ une minute) ; parcours `e2e/parcours.spec.ts` et `e2e/recommandation.spec.ts`. Piège : le nom accessible d'une liste dans son `<label>` contient l'option choisie, donc utiliser `getByRole("combobox", { name: /^Ansatz/ })`.
+
+### 9.4 Scripts, données, Docker
+
+- `scripts/build_results.py` : `grid()`, `compute(config)` (en processus séparés), `save`, `missing` (reprise par `config_key`), `--measure` (10 configurations tirées avec `random.Random(0)`, estimation et règle des 2 heures), `--limit`, `--workers`, `--export`.
+- `scripts/train_predictor.py` : `--database-url` ou `--csv`, `--models-dir`, `--layers`.
+- `scripts/seed_demo.py` : `ensure_model` d'abord, puis `seed_v03` (problèmes, ansatz, entraînement sous bruit, recommandation).
+- `data/results_grid.csv` versionné ; `data/results.db` et les `models/` ignorés par Git ; `api/models` exclu de l'image.
+- `api/Dockerfile` : copie `data/results_grid.csv` ; `CMD sh -c "python -m stochastiq_api.ml.bootstrap && exec uvicorn ..."` ; healthcheck avec 600 s de démarrage (premier entraînement : environ 105 s mesurées).
+- `docker-compose.yml` : `MODELS_DIR=/data/models`.
+
+### 9.5 Pièges rencontrés en v0.3
+
+- Heredocs avec apostrophes : toujours « unexpected EOF » ; écrire un script Python avec l'outil d'écriture, puis le lancer.
+- `repr` d'un flottant numpy 2 donne `np.float64(...)` : convertir en `float` avant d'écrire du texte.
+- Tests pytest : un fichier de test non commité dans la copie de travail est collecté s'il existe au démarrage de la suite ; écrire le code d'un jalon seulement sur sa branche.
+- `models_dir` par défaut relatif au dossier courant : les tests doivent utiliser un dossier temporaire (fait dans `conftest.py`).
+- `npm ci` dans l'image web a échoué une fois sur « Exit handler never called! » (défaut interne de npm) ; la relance a réussi sans changement.
+
+### 9.6 Tests en v0.3
+
+Bibliothèque 359 tests, API 288 tests (Windows ; 286 sous Linux, une fois), front 81 tests, build réussi, 2 parcours Playwright. Suites validées sous Windows ; API validée une fois sous Linux (conteneur) ; bibliothèque et front non testés sous Linux.
+
+### 9.7 Corrections prévues en v0.3.1 (non codées)
+
+- **Affichage de la recommandation** : étiqueter les deux messages de couverture (TVD finale et dégradation) ; remplacer « leurs intervalles se recouvrent » par « aucun intervalle fiable : impossible de les départager » quand aucun ansatz n'a d'intervalle ; citer toutes les couvertures dans la partie Méthode du rapport.
+- **Priorité haute** : décider si une famille est connue par une distance dans l'espace des `problem_features`. Un Bars-and-Stripes importé en CSV est aujourd'hui classé « famille inconnue », donc sans intervalle.
+- **Référence classique plus forte** : mélange de lois, ou petite machine de Boltzmann. Les références actuelles (marginales indépendantes, arbre de Chow-Liu) sont **simples** : battre l'arbre de Chow-Liu ne prouve pas un avantage sur les méthodes classiques en général.
+- **Ansatz sans intrication** : calculer leur valeur directement (meilleure distribution produit, comme la référence « marginales indépendantes ») plutôt que la prédire. Aujourd'hui, la borne basse prédite de RotationOnly peut descendre à 0,25 alors que la théorie interdit de descendre sous environ 0,37 sur le cas observé.
+- **Grille** : entraîner chaque configuration avec plusieurs graines, pour limiter l'effet des minima locaux.
+

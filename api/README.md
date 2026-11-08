@@ -37,6 +37,8 @@ Variables d'environnement, ou fichier `.env` dans le dossier de lancement (voir 
 | `SECRET_KEY` | secret de signature des JWT (32 caractères au moins hors `dev`) | valeur de développement |
 | `DATABASE_URL` | base SQLAlchemy | `sqlite:///./stochastiq.db` |
 | `CORS_ORIGIN` | seule origine autorisée (le front) ; sert aussi à construire les liens d'invitation | `http://localhost:5173` |
+| `RUN_TIMEOUT_SECONDS` | durée maximale d'un run, en secondes | `600` |
+| `MODELS_DIR` | dossier du modèle de prédiction (`/data/models` sous Docker) ; voir `docs/PREDICTION.md` | `./models` |
 
 ## Sécurité de base
 
@@ -65,6 +67,13 @@ Les rôles sont ordonnés : `viewer` < `editor` < `key_manager` < `owner`. La ma
 | `compare` | liste `ansatz`, `n_qubits`, `layers`, `n_samples`, `n_seeds`, `seed` | lignes de `compare(...)` avec l'indicateur `pareto` |
 | `scaling` | `ansatz` (1 à 4), `qubit_min`, `qubit_max`, `layers`, `layers_mode`, `n_samples`, `observable` ou `compare_observables`, `seed` | séries par ansatz et observable, ajustements `fit_decay` (actifs et tous) |
 | `hardware` | `ansatz`, `n_qubits`, `layers`, `topology`, `seed` | `hardware_cost(...)` |
+| `training` | `problem_id`, `ansatz`, `layers`, `loss` (`kl`, `mmd`, `tvd`), `optimizer` (`adam`, `spsa`, `cobyla`), `max_iter` (10 à 1000), `learning_rate`, `shots` (null ou 100 à 100 000), `seed`, `evaluate_noise` (`{profile, topology}`, facultatif) | `train_qcbm(...)` : paramètres, historique, distribution apprise, KL, TVD, Hellinger ; références classiques ; caractéristiques du problème ; `noise` (métriques sous bruit) |
+| `noise` | `ansatz`, `n_qubits`, `layers`, `profile` (`faible`, `moyen`, `fort` ou `{p1, p2, readout}`), `topology` (`line`, `ring`, `full`), `n_samples` (1 à 200), `seed` | `noisy_tvd(...)` : TVD moyenne idéal / bruité sur des paramètres aléatoires |
+| `recommendation` | `problem_id`, `ansatz` (2 à 7), `layers`, `noise_profile`, `topology`, `budget` (200 à 7000 itérations), `n_samples`, `seed` | par ansatz : diagnostic léger, prédiction, mesure si un entraînement existe ; références classiques ; classement et verdict (`justified`, `not_justified`, `undetermined`, ansatz à entraîner) |
+
+Le run `diagnostic` accepte aussi `noise_profile` (facultatif) : la carte « Dégradation sous bruit » (20 jeux de paramètres, topologie en ligne). Le run `recommendation` demande un modèle de prédiction (409 sinon) ; les entraînements déjà réussis du projet, sur le même problème et le même nombre de couches, sont recopiés dans ses paramètres (`existing`) et priment sur la prédiction.
+
+Chaque run réussi de diagnostic, de bruit ou d'entraînement ajoute des lignes à la base de résultats (table `results`) : caractéristiques du circuit et du problème, profil de bruit, grandeurs mesurées ; jamais les probabilités du client.
 
 Limites validées par l'API : qubits de 2 à 8, couches de 1 à 8, échantillons de 50 à 5000, graines (`n_seeds`) de 1 à 10, 2 runs en cours au plus par utilisateur (429 au-delà), durée maximale de 10 minutes.
 

@@ -1,5 +1,46 @@
 # Historique des versions
 
+## 0.3.0 (2026-11-08)
+
+Un client apporte sa distribution et ses ansatz, les entraîne en simulation, avec ou sans bruit, les compare à des méthodes classiques simples, et obtient une prédiction et une recommandation. API et application web en version 0.3.0, bibliothèque `stochastiq` en version 0.2.0 (toujours sans dépendance web).
+
+### Dérogations validées par l'auteur
+- **Périmètre** : l'entraînement de QCBM en simulation et le bruit simulé (qiskit-aer) entrent dans le périmètre.
+- **Dashboard Streamlit** : il n'est pas étendu. Les phrases de lecture des nouvelles fonctions (entraînement, bruit, recommandation) n'existent que dans l'application web.
+- **Verdict de la recommandation** (jalon 8) : une valeur mesurée n'est plus traitée comme un intervalle de largeur nulle. Règle des 10 % pour une valeur mesurée (sinon « Équivalent au classique (écart inférieur à 10 %) »), règle des bornes pour une prédiction avec intervalle, marge de 2 × l'erreur moyenne de validation pour une prédiction sans intervalle (verdicts « probablement »). Même règle des 10 % pour la phrase de l'écran Entraînement. Détails : `docs/PREDICTION.md`.
+- **Critère de l'IA de prédiction** (jalon 6) : le critère initial, qui mélangeait précision et intervalles, est séparé en deux. La valeur centrale du modèle est retenue si son gain sur la meilleure référence atteint 20 % ; l'intervalle est calibré par CQR et n'est affiché que si sa couverture mesurée, pour un cas comparable, est entre 70 % et 90 %. Résultats avant et après : `docs/PREDICTION.md`.
+
+### Bibliothèque (`stochastiq` 0.2.0)
+- `distributions` : six distributions de référence (gaussienne, bimodale, log-normale, uniforme, Bars-and-Stripes, Boltzmann d'Ising), imports d'échantillons et de probabilités, caractéristiques d'un problème.
+- `custom_ansatz` : ansatz par spec JSON (rotations, motif d'intrication, CNOT choisis) ou par texte OpenQASM 3 (option `qasm3`), validation des portes et des tailles, structure pour le dessin.
+- `training` : entraînement QCBM (pertes KL, MMD et TVD ; optimiseurs Adam, SPSA et COBYLA ; probabilités exactes ou par tirages ; graine), métriques KL, TVD et Hellinger.
+- `baselines` : marginales indépendantes et arbre de Chow-Liu.
+- `noise` (option `noise`, qiskit-aer) : profils faible, moyen et fort ou personnalisé, probabilités bruitées sur le circuit transpilé (ligne, anneau, complète), TVD moyenne idéal / bruité, comptes de portes et fidélité par comptage.
+- `circuit_features` ; `gradient_scaling` accepte un constructeur de circuit ; probabilités en lot exposées sans changer les résultats existants.
+- Qiskit 1.3 au minimum.
+
+### API (0.3.0)
+- Problèmes : distributions de référence ou import CSV (1 Mo et 100 000 lignes au plus, texte non conservé), droit `problems` (éditeur), événement `problem_added`.
+- Ansatz personnalisés (spec ou OpenQASM 3, jamais de code Python), droit `custom_ansatz` (éditeur) ; les runs acceptent `{"custom_id": n}`, résolu en contenu complet pour rester reproductibles.
+- Runs `training` (avec évaluation facultative sous bruit), `noise` et `recommendation` ; carte « Dégradation sous bruit » dans le diagnostic.
+- Base de résultats (`results`, migration 0005), alimentée par les runs réussis et par la grille de référence ; jamais de probabilités brutes. Partage des résultats d'un projet avec l'IA (`share_results`, faux par défaut, propriétaire).
+- IA de prédiction (`api/stochastiq_api/ml/`, scikit-learn et joblib) : TVD finale et dégradation sous bruit, quatre validations, intervalle CQR ; `POST /projects/{id}/predict` (409 sans modèle).
+- Recommandation : classement de 2 à 7 ansatz, entraînements existants prioritaires, références classiques, verdict selon la nature de la preuve (mesure, intervalle ou marge), ansatz à entraîner pour trancher.
+- Processus de calcul créés par `spawn` sur toutes les plateformes (sous Linux, `fork` bloquait un routage Qiskit après une transpilation dans le processus de l'API).
+- Message de durée maximale construit à partir de `RUN_TIMEOUT_SECONDS` ; réglage `MODELS_DIR`.
+
+### Application web (0.3.0)
+- Écrans Problèmes, Mes ansatz, Entraînement (courbe de perte en échelle logarithmique, distribution apprise, quantique contre classique, évaluation sous bruit), Recommandation et Rapport imprimable (CSV et JSON).
+- Carte « Dégradation sous bruit » dans le Diagnostic ; ansatz personnalisés proposés dans les formulaires existants ; partage des résultats avec l'IA sur la page du projet.
+
+### Données, scripts et déploiement
+- `scripts/build_results.py` : grille de référence (7 ansatz × distributions × 2 à 6 qubits × 1 à 4 couches, entraînement exact puis 3 profils de bruit), reprise, `--measure`, `--limit`, `--export` ; export `data/results_grid.csv` (3024 lignes).
+- `scripts/train_predictor.py` : validations et entraînement de l'IA ; option `--layers` pour un modèle réduit.
+- Le conteneur de l'API et `scripts/seed_demo.py` entraînent le modèle de prédiction s'il est absent de `MODELS_DIR`.
+- Démo enrichie : problème de référence, problème CSV, ansatz personnalisé, entraînement, recommandation.
+- Playwright : nouveau parcours de recommandation ; les tests de bout en bout entraînent un modèle réduit dans un dossier temporaire.
+- Documentation : `docs/PREDICTION.md`, et mise à jour du README, de `API.md`, `ROLES.md`, `METRIQUES.md`, `ARCHITECTURE.md` et des deux rapports.
+
 ## 0.2.0 (2026-11-06)
 
 Prototype web complet. La bibliothèque `stochastiq` reste en version 0.1.0, sans dépendance web.

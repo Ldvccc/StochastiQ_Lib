@@ -30,7 +30,7 @@ describe("entraînement", () => {
     const s = trainingSentence(result(0.01, 0.05), null);
     expect(s).toBe(
       "Après 200 itérations (perte KL, Adam), l'ansatz atteint une TVD de 0,0100 avec 8 paramètres. " +
-        "Il fait mieux que les deux références classiques ; la meilleure (arbre de Chow-Liu, 3 paramètres) atteint 0,0500. " +
+        "Il fait mieux que les deux références classiques, de plus de 10 % ; la meilleure (arbre de Chow-Liu, 3 paramètres) atteint 0,0500. " +
         "Une seule initialisation, en simulation exacte sans bruit.",
     );
   });
@@ -41,8 +41,14 @@ describe("entraînement", () => {
     expect(s).toContain("1000 tirages par évaluation");
   });
 
-  it("phrase : égalité à 0,0001 près", () => {
-    expect(trainingSentence(result(0.05, 0.05005), null)).toContain("atteint la même TVD à 0,0001 près");
+  it("phrase : équivalence sous 10 % d'écart, dont le cas réel 0,0585 contre 0,0588", () => {
+    const s = trainingSentence(result(0.0585, 0.0588), null);
+    expect(s).toContain(
+      "Équivalent à la meilleure référence classique (écart inférieur à 10 %) : « arbre de Chow-Liu » atteint 0,0588 avec 3 paramètres, contre 8 pour l'ansatz.",
+    );
+    expect(s).not.toContain("fait mieux");
+    expect(trainingSentence(result(0.0529, 0.0588), null)).toContain("Il fait mieux"); // 0,0529 < 0,9 × 0,0588
+    expect(trainingSentence(result(0.065, 0.0588), null)).toContain("fait mieux : TVD de 0,0588"); // 0,065 > 1,1 × 0,0588
   });
 
   it("validation du formulaire", () => {

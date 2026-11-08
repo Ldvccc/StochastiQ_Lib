@@ -54,9 +54,10 @@ export function recommendationErrors(form: RecommendationForm, problemQubits: nu
 
 /** Intervalle affiché d'un ansatz : bornes, ou motif de leur absence. */
 export function intervalText(item: RecommendationItem): string {
-  if (item.source === "measured") return "mesure, sans intervalle";
-  if (item.low !== null && item.high !== null) return `[${formatMetric(item.low)} ; ${formatMetric(item.high)}]`;
-  return item.interval_message ?? "n/a";
+  if (item.evidence === "measured") return "mesure, sans intervalle";
+  if (item.evidence === "interval" && item.low !== null && item.high !== null) return `[${formatMetric(item.low)} ; ${formatMetric(item.high)}]`;
+  const margin = item.margin !== null ? ` Marge retenue : ± ${formatMetric(item.margin)} (deux fois l'erreur moyenne de validation).` : "";
+  return `${item.interval_message ?? "Intervalle non affiché."}${margin}`;
 }
 
 export function sourceText(item: RecommendationItem): string {

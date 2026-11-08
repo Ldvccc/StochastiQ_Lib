@@ -115,6 +115,24 @@ Conséquences, avec le modèle actuel :
 
 La TVD sous bruit prédite est la somme de la TVD finale et de la dégradation. Son intervalle, somme des deux intervalles, n'est donné que si les deux sont fiables.
 
+## Verdict de la recommandation : nature de la preuve
+
+**Dérogation validée par l'auteur (jalon 8).** Un run de recommandation, relancé après l'entraînement de HardwareEfficient sur « Gaussienne 4 qubits », concluait « Le quantique se justifie » : TVD mesurée 0,0585 contre 0,0588 pour l'arbre de Chow-Liu, soit 0,5 % d'écart, avec une seule initialisation et 16 paramètres contre 7. La valeur mesurée était traitée comme un intervalle de largeur nulle. La règle dépend désormais de la nature de la preuve de l'ansatz classé premier :
+
+| Preuve | Règle | Verdicts |
+|---|---|---|
+| Valeur mesurée (entraînement du projet) | « justifié » si TVD < 0,9 × meilleure TVD classique, « non justifié » si TVD > 1,1 × | « Le quantique se justifie », « ne se justifie pas », sinon « Équivalent au classique (écart inférieur à 10 %) : le quantique n'apporte rien sur ce problème », avec le nombre de paramètres des deux côtés |
+| Valeur prédite avec intervalle fiable | « justifié » si la borne haute est sous la meilleure TVD classique, « non justifié » si la borne basse est au-dessus | « se justifie », « ne se justifie pas », sinon « Indéterminé » |
+| Valeur prédite sans intervalle fiable | marge m = 2 × l'erreur absolue moyenne de validation du cas comparable ; « justifié » si valeur + m < TVD classique, « non justifié » si valeur − m > TVD classique | « se justifie probablement », « ne se justifie probablement pas », sinon « Indéterminé » |
+
+Pour une TVD sous bruit prédite (TVD finale plus dégradation), la marge vaut 2 × (MAE de la TVD finale + MAE de la dégradation). Une TVD mesurée combinée à une dégradation prédite garde l'incertitude de la mesure sur une seule initialisation (ajustements validés par l'auteur) :
+- dégradation prédite avec intervalle fiable : l'intervalle [TVD mesurée + bas ; TVD mesurée + haut] est élargi de 0,1 × meilleure TVD classique de chaque côté, puis la règle des bornes s'applique. Exemple de test : TVD mesurée 0,0585, dégradation [0 ; 0,001], classique 0,0597 ; sans élargissement, la borne haute 0,0595 aurait donné « se justifie » ; avec, l'intervalle [0,0525 ; 0,0655] contient 0,0597 et le verdict est « Indéterminé » ;
+- dégradation prédite sans intervalle : marge de 0,1 × meilleure TVD classique + 2 × MAE de la dégradation. Si la valeur centrale vient d'une référence (gain du modèle sous 20 %), c'est la MAE de cette référence qui compte. Une valeur mesurée n'a pas de « borne » et n'est jamais présentée comme telle.
+
+La même règle des 10 % s'applique à la phrase de l'écran Entraînement : l'ansatz « fait mieux » que les références classiques seulement si sa TVD est sous 0,9 × la meilleure, et la référence « fait mieux » au-delà de 1,1 × ; sinon il lui est équivalent.
+
+Ce seuil de 10 % est une règle de lecture fixée par l'auteur, pas une quantité mesurée : il tient compte, grossièrement, de la variabilité d'une seule initialisation.
+
 ## Limites
 
 - **Familles jamais vues.** C'est la limite principale. Le calibrage se fait sur une partie du jeu d'entraînement : il garantit la couverture pour des cas qui ressemblent à ces données, pas pour une famille de distributions absente. La couverture mesurée tombe à 52,4 % (TVD finale) et 66,8 % (dégradation). Un problème importé en CSV est toujours de famille inconnue tant qu'aucun projet qui partage ses résultats n'a fourni de lignes « csv ». Pour ces problèmes, la valeur centrale reste meilleure que la référence (gain de 28,1 % et 47,4 %), mais aucun intervalle n'est affiché.

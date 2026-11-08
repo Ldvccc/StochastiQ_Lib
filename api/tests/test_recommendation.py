@@ -56,7 +56,12 @@ def test_recommandation_predite(model_client):
     assert classical["best_tvd"] == min(b["tvd"] for b in classical["baselines"].values())
     decision = result["decision"]
     assert sorted(decision["ranking"]) == ["hardware_efficient", "rotation_only"]
-    assert decision["verdict"] in ("justified", "not_justified", "undetermined")
+    assert decision["verdict"] in ("justified", "not_justified", "probably_justified", "probably_not_justified", "undetermined")
+    for item in result["items"]:
+        assert item["evidence"] in ("interval", "margin")
+        if item["evidence"] == "margin":
+            # Marge : 2 × l'erreur absolue moyenne de validation du cas comparable.
+            assert item["margin"] == pytest.approx(2 * item["prediction"]["final_tvd"]["mae"])
     assert decision["n_trainings"] == 2
     assert result["noise_profile"] is None
 
@@ -72,7 +77,9 @@ def test_entrainement_existant_prime(model_client):
     assert existing[1] is None
     item = finished["result"]["items"][0]
     assert item["source"] == "measured"
-    assert item["value"] == item["low"] == item["high"] == pytest.approx(trained["result"]["metrics"]["tvd"])
+    assert item["evidence"] == "measured"
+    assert item["value"] == pytest.approx(trained["result"]["metrics"]["tvd"])
+    assert item["low"] is None and item["high"] is None  # une mesure n'a pas de « borne »
     assert "hardware_efficient" not in finished["result"]["decision"]["to_train"]
     # Autre nombre de couches : l'entraînement ne compte pas.
     other = run(model_client, owner, project_id, params(problem_id, layers=2))

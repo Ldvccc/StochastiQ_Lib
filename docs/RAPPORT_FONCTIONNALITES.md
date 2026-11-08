@@ -1,4 +1,4 @@
-# Rapport 1 : fonctionnalités de StochastiQ (état au 6 novembre 2026, version 0.2.0)
+# Rapport 1 : fonctionnalités de StochastiQ (état au 8 novembre 2026, version 0.3.0)
 
 Ce rapport décrit **ce que fait** le projet, écran par écran et fonction par fonction, ainsi que les règles métier, les conventions imposées par l'auteur et l'état du dépôt. Le rapport 2 (`docs/RAPPORT_CODE.md`) explique **comment** c'est codé. Les deux ensemble suffisent pour reprendre le travail sans autre contexte.
 
@@ -6,7 +6,7 @@ Ce rapport décrit **ce que fait** le projet, écran par écran et fonction par 
 
 ## 1. Le projet en bref
 
-- **Objet** : StochastiQ est un prototype universitaire de diagnostic d'ansatz (circuits quantiques paramétrés) pour les machines de Born quantiques (QCBM), construit sur Qiskit. Il mesure, pour un circuit :
+- **Objet** : StochastiQ est un prototype universitaire de diagnostic d'ansatz (circuits quantiques paramétrés) pour les machines de Born quantiques (QCBM), construit sur Qiskit. Depuis la v0.3, un client y apporte aussi sa distribution et ses ansatz, les entraîne en simulation (avec ou sans bruit), les compare à des références classiques simples et reçoit une prédiction et une recommandation (section 12). Pour un circuit, il mesure :
   - l'expressibilité ;
   - la capacité d'intrication ;
   - la variance du gradient (détection des plateaux stériles) ;
@@ -14,9 +14,9 @@ Ce rapport décrit **ce que fait** le projet, écran par écran et fonction par 
 - **Dépôt** : `C:\Users\ldvcb\Desktop\Sto\StochastiQ_Lib`, remote `https://github.com/Ldvccc/StochastiQ_Lib`. Rien n'a jamais été poussé depuis le début du travail.
 - **Contexte** : prototype universitaire, **pas une application de production**. Cette mention figure dans le README et doit y rester.
 - **Quatre parties** :
-  1. **Bibliothèque Python** `stochastiq` (`src/stochastiq/`, version 0.1.0) : tous les calculs, **aucune dépendance web**.
-  2. **API FastAPI** (`api/`, paquet `stochastiq_api`, version 0.2.0) : comptes, projets, rôles, invitations, runs, activité.
-  3. **Application web React** (`web/`, version 0.2.0) : écrans d'équipe et écrans scientifiques.
+  1. **Bibliothèque Python** `stochastiq` (`src/stochastiq/`, version 0.2.0) : tous les calculs génériques, **aucune dépendance web**.
+  2. **API FastAPI** (`api/`, paquet `stochastiq_api`, version 0.3.0) : comptes, projets, rôles, invitations, problèmes, ansatz personnalisés, runs, activité ; base de résultats et IA dans `api/stochastiq_api/ml/`.
+  3. **Application web React** (`web/`, version 0.3.0) : écrans d'équipe et écrans scientifiques.
   4. **Dashboard Streamlit** (`dashboard/`) : outil local d'exploration, **hors application web**.
 - **Sens des dépendances** : l'API importe la bibliothèque, **jamais l'inverse**. Le front ne parle qu'à l'API.
 
@@ -24,7 +24,7 @@ Ce rapport décrit **ce que fait** le projet, écran par écran et fonction par 
 
 ## 2. Conventions imposées par l'auteur (à respecter dans toute suite)
 
-- **Langue** : interface, messages d'erreur, docstrings, commentaires et messages de commit en **français**.
+- **Langue** : interface, messages d'erreur, docstrings, commentaires, messages de commit **et rapports à l'auteur** en **français**.
 - **Nombres affichés** : notation française, avec **virgule décimale**. En règle générale, 4 décimales pour les métriques, 2 pour les surcoûts (« ×1,00 »), 1 pour les pourcentages (« 33,3 % »). Pas de notation scientifique, sauf sur l'axe logarithmique sous 0,0001 (« 1e-5 », « 1,5e-5 »). L'API et le CSV, eux, utilisent des nombres JSON standard, avec point décimal.
 - **Style** : pas d'emoji, pas de point d'exclamation, nulle part.
 - **Charte StochastiQ** :
@@ -53,17 +53,20 @@ Ce rapport décrit **ce que fait** le projet, écran par écran et fonction par 
   - une branche par lot de travail, un commit par bloc fonctionnel, messages en français ;
   - chaque message se termine par `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` ;
   - **ne jamais pousser** et **ne jamais toucher à `main`** ;
-  - les branches de release (`release/v0.1`, `release/v0.2`) regroupent le travail par fusions `--no-ff` ; les tags sont locaux (`v0.1.0`, `v0.2.0`).
+  - les branches de release (`release/v0.1`, `release/v0.2`, `release/v0.3`) regroupent le travail par fusions `--no-ff` ; les tags sont locaux (`v0.1.0`, `v0.2.0`, `v0.3.0`) ;
+  - v0.3 : une branche `feature/` par jalon, chacune partant de la précédente ; **le code d'un jalon ne s'écrit que sur sa propre branche** ; un commit doit correspondre exactement à ce qui a été testé.
 - **Méthode** :
   - lire le code existant avant de modifier ;
   - ne coder que ce qui est demandé ;
   - signaler toute dérogation ;
   - ne jamais corriger « au hasard » un écart inexpliqué : le montrer ;
-  - si un jalon échoue après deux tentatives de correction, s'arrêter, décrire le blocage et proposer une solution.
+  - si un jalon échoue après deux tentatives de correction, s'arrêter, décrire le blocage et proposer une solution ;
+  - mesurer avant tout calcul de plus de 15 minutes ; si l'estimation dépasse 2 heures, s'arrêter et demander ;
+  - aucune valeur inventée ;
+  - **sécurité** : ne jamais exécuter de code Python fourni par un client ; toute entrée client passe par pydantic, avec des tailles bornées.
 - **Rapports de fin de tâche** : tests lancés avec leur résultat affiché, liste de ce qui n'a pas pu être vérifié (en particulier le rendu visuel), liste des dérogations.
-- **Hors périmètre (ne pas coder)** :
-  - entraînement de QCBM ;
-  - connexion à de vraies machines (IBM, Origin) ;
+- **Hors périmètre (ne pas coder)** (l'entraînement de QCBM et le bruit simulé y sont entrés en v0.3, par dérogation) :
+  - connexion à de vraies machines (IBM, Origin) ; la collecte IBM (jalon 9) est facultative et **ne se commence pas sans accord explicite de l'auteur** ;
   - envoi d'e-mails ;
   - paiement ;
   - mode multi-organisations ;
@@ -383,7 +386,7 @@ Sous 800 px de large, elle passe en bandeau horizontal.
 
 ---
 
-## 9. Tests (état vert sur `release/v0.2`)
+## 9. Tests (état vert sur `release/v0.2` ; état v0.3 en section 12.11)
 
 | Suite | Commande | Résultat |
 |---|---|---|
@@ -403,7 +406,7 @@ Elle **n'a jamais tourné**, puisque rien n'a été poussé.
 
 ---
 
-## 10. État Git
+## 10. État Git (v0.2 ; état v0.3 en section 12.12)
 
 - **Branche courante** : `release/v0.2`. La copie de travail est propre, à l'exception de ces deux rapports, non commités.
 - **Tags locaux** :
@@ -446,3 +449,126 @@ Elle **n'a jamais tourné**, puisque rien n'a été poussé.
   - audit de sécurité ;
   - comparaison avec le code d'origine de QCBM Lab ;
   - modèles de bruit.
+
+---
+
+## 12. Version 0.3.0 : le client apporte son problème et ses ansatz
+
+Mission v0.3 (plan et notes : `docs/PLAN_V0.3.md`). Un client apporte sa distribution de probabilités (le « problème ») et ses propres ansatz, les diagnostique, les entraîne en simulation avec ou sans bruit, les compare à des méthodes classiques simples, et obtient une prédiction et une recommandation d'une IA entraînée sur une base de résultats qui s'enrichit à chaque run.
+
+### 12.1 Jalons et branches
+
+| Jalon | Branche | Contenu |
+|---|---|---|
+| 0 | `feature/m6-corrections` | message de durée maximale construit à partir de `RUN_TIMEOUT_SECONDS` (« 0,5 seconde », « 10 minutes ») ; Qiskit ≥ 1.3 |
+| 1 | `feature/m7-problemes` | distributions, problèmes, import CSV, écran Problèmes |
+| 2 | `feature/m8-ansatz-client` | ansatz personnalisés (spec, OpenQASM 3), écran Mes ansatz |
+| 3 | `feature/m9-entrainement` | entraînement QCBM, références classiques, écran Entraînement |
+| 4 | `feature/m10-bruit` | bruit simulé (qiskit-aer), évaluation sous bruit, carte « Dégradation sous bruit » |
+| 5 | `feature/m11-base-resultats` | base de résultats, partage avec l'IA, grille de référence |
+| 6 | `feature/m12-prediction` | IA de prédiction, route `/predict`, `docs/PREDICTION.md` |
+| 7 | `feature/m13-recommandation` | recommandation, rapport imprimable, parcours Playwright |
+| 8 | `feature/m14-release` | modèle entraîné au démarrage, démo enrichie, versions, documentation, Docker, tag |
+| 9 | (non commencé) | collecte IBM, facultative : **ne pas commencer sans accord explicite de l'auteur** |
+
+Chaque branche part de la précédente et est fusionnée en `--no-ff` dans `release/v0.3` (créée depuis `release/v0.2`), les quatre suites vertes.
+
+### 12.2 Dérogations validées par l'auteur
+
+- **Périmètre** : l'entraînement de QCBM en simulation et le bruit simulé entrent dans le périmètre.
+- **Dashboard Streamlit** : il n'est pas étendu ; les phrases de lecture des nouvelles fonctions n'existent que dans le web.
+- **Critère de l'IA** (jalon 6) : séparé entre valeur centrale (gain ≥ 20 % sur la meilleure référence) et intervalle (CQR, affiché seulement si la couverture mesurée pour un cas comparable est entre 70 et 90 %). Les deux versions sont dans `docs/PREDICTION.md`.
+
+### 12.3 Problèmes (distributions cibles)
+
+- Distributions de référence : gaussienne, bimodale, log-normale, uniforme, Bars-and-Stripes (4 et 6 qubits seulement), Boltzmann d'Ising (graine). De 2 à 8 qubits.
+- Import CSV (1 Mo et 100 000 lignes au plus ; le texte n'est pas conservé) :
+  - format « probabilités » : `chaîne de bits,probabilité`, qubit n−1 à gauche, somme égale à 1 à 1e-6 près ;
+  - format « échantillons » : une ou plusieurs variables continues, un intervalle par variable, encodage binaire ou de Gray.
+- Caractéristiques affichées : qubits, entropie normalisée, part du support non nul, probabilité maximale, information mutuelle moyenne entre bits.
+- Droit `problems` (éditeur) ; événement d'activité `problem_added`.
+
+### 12.4 Ansatz personnalisés
+
+- **Spec** : 1 à 3 rotations parmi RX, RY, RZ, et un motif d'intrication (anneau, anneau simple, fort, ligne, toutes les paires, briques, aucun) ou une liste de CNOT « contrôle-cible » (64 au plus ; le plus grand indice fixe le nombre de qubits).
+- **OpenQASM 3** (20 000 caractères au plus) : paramètres déclarés par `input float[64] nom;`, chacun utilisé par une seule porte RX, RY ou RZ ; portes fixes autorisées seulement. OpenQASM 2 n'a pas de paramètres libres.
+- Validation : 2 à 8 qubits, 1 à 300 paramètres, profondeur ≤ 500 ; message qui nomme la porte fautive. **Aucun code Python client n'est jamais exécuté.**
+- Les runs acceptent `{"custom_id": n}` ; l'API le remplace par le contenu complet. Un ansatz à nombre de qubits fixé est refusé pour le scaling et pour un problème d'une autre taille. Seuls les ansatz du catalogue peuvent être épinglés.
+- Droit `custom_ansatz` (éditeur).
+
+### 12.5 Entraînement
+
+- Écran Entraînement : problème, ansatz, couches, perte (KL, MMD, TVD), optimiseur (Adam, SPSA, COBYLA ; Adam interdit avec la TVD), itérations (10 à 1000), pas (0 < pas ≤ 5), probabilités exactes ou tirages (100 à 100 000), graine.
+- Résultat : tableau « Quantique contre classique » (KL, TVD, Hellinger, paramètres) avec les deux références (marginales indépendantes, arbre de Chow-Liu), courbe de perte en échelle logarithmique, distribution apprise contre cible, deux exports CSV, commentaires.
+- Phrase de lecture : TVD atteinte, comparaison avec la meilleure référence par la règle des 10 % (« fait mieux » sous 0,9 ×, la référence « fait mieux » au-delà de 1,1 ×, sinon « Équivalent à la meilleure référence classique (écart inférieur à 10 %) »), portée (« Une seule initialisation… »).
+- Évaluation facultative sous bruit (profil, topologie) : ligne supplémentaire et phrase « Avec les mêmes paramètres appris, sous le bruit « fort » (topologie ligne), la TVD passe de … à …. Les profils de bruit sont des ordres de grandeur, pas des calibrations de machines réelles. »
+
+### 12.6 Bruit simulé
+
+- Profils faible, moyen, fort (dépolarisation 1 et 2 qubits, erreur de lecture : 1e-4/1e-3/1e-2, 5e-4/5e-3/2e-2, 1e-3/1e-2/5e-2) ou personnalisé (taux de 0 à 0,5). Ordres de grandeur, pas des calibrations.
+- Topologies ligne, anneau, complète ; heavy-hex refusé (matrice densité trop grande).
+- Run `noise` (TVD moyenne idéal / bruité sur des paramètres aléatoires) ; diagnostic avec `noise_profile` : carte « Dégradation sous bruit » (20 jeux de paramètres, ligne).
+
+### 12.7 Base de résultats et partage
+
+- Chaque run réussi de diagnostic, de bruit ou d'entraînement ajoute des lignes (`diagnostic`, `noise`, `training`, `training_noise`) : empreinte de l'ansatz, qubits, couches, caractéristiques du circuit et du problème, famille du problème, profil de bruit, grandeurs mesurées, version de la bibliothèque. **Jamais de probabilités brutes.**
+- Case « Partager les résultats de ce projet avec l'IA » sur la page du projet : désactivée par défaut, propriétaire seulement. L'IA n'apprend que sur la grille de référence et les projets qui partagent.
+- Grille de référence (`scripts/build_results.py`) : 756 configurations, 3024 lignes, 0,1 h avec 8 processus ; export `data/results_grid.csv`.
+
+### 12.8 Prédiction
+
+- `POST /projects/{id}/predict` : TVD finale prédite et, avec un profil, dégradation et TVD sous bruit, chacune avec l'intervalle 10-90 % ou « Intervalle non fiable pour ce cas : couverture mesurée X %. ».
+- Validation qui correspond au cas : ansatz inconnu, famille inconnue (un problème CSV est de famille « csv », jamais vue par la grille), qubits hors de 2 à 6 ; la plus défavorable s'il y en a plusieurs ; sinon découpage aléatoire.
+- Résultats réels (après CQR) : intervalles affichés pour un ansatz du catalogue sur une distribution de référence (79,0 % et 79,5 % de couverture) et, pour la TVD finale seulement, pour un ansatz personnalisé (74,6 %). Pas d'intervalle pour les problèmes CSV ni à 7 et 8 qubits. Détail : `docs/PREDICTION.md`.
+- Sans modèle : 409 « Aucun modèle entraîné : lancez scripts/train_predictor.py. ». Le conteneur de l'API et `seed_demo.py` l'entraînent s'il est absent de `MODELS_DIR`.
+
+### 12.9 Recommandation et rapport
+
+- Écran Recommandation : problème, 2 à 7 ansatz (cases à cocher), couches, bruit facultatif, topologie, budget d'itérations (200 à 7000 ; budget // 200 entraînements conseillés au plus).
+- Pour chaque ansatz : diagnostic léger, TVD prédite (ou mesurée si un entraînement réussi existe dans le projet pour le même problème et le même nombre de couches ; il prime), intervalle ou motif de son absence, source.
+- Verdict (règles dans l'API, phrases dans le web), selon la nature de la preuve de l'ansatz classé premier (dérogation validée par l'auteur au jalon 8) :
+  - valeur mesurée, règle des 10 % : « Le quantique se justifie sur ce problème : « A » atteint une TVD mesurée de …, plus de 10 % sous la meilleure TVD classique (… ; P paramètres pour l'ansatz, Q pour la référence). », la phrase symétrique « ne se justifie pas », ou « Équivalent au classique (écart inférieur à 10 %) : le quantique n'apporte rien sur ce problème. … » (jamais de « borne » pour une mesure) ;
+  - valeur prédite avec intervalle fiable : « Le quantique se justifie sur ce problème : la borne haute de « A » (TVD …) est sous la meilleure TVD classique (…). », la phrase symétrique avec la borne basse, sinon « Indéterminé : entraînez « A » et « B » pour trancher. » ;
+  - valeur prédite sans intervalle : marge de 2 × l'erreur moyenne de validation (pour une TVD mesurée combinée à une dégradation prédite : 0,1 × meilleure TVD classique + 2 × erreur moyenne de la dégradation ; si la dégradation a un intervalle fiable, celui-ci est élargi de 0,1 × meilleure TVD classique de chaque côté), « Le quantique se justifie probablement… » ou « ne se justifie probablement pas… », sinon « Indéterminé » ;
+  - « « A » et « B » sont indistinguables : leurs intervalles se recouvrent. » quand leurs intervalles effectifs se recoupent.
+  - Cas réel qui a motivé la règle : 0,0585 mesuré contre 0,0588 (Chow-Liu) donnait « se justifie » ; c'est désormais « Équivalent ».
+- Page Rapport (`/projects/{id}/rapport?run=`) : cadre, verdict, classement, méthode et limites ; Imprimer (navigation et boutons masqués par `@media print`), CSV, JSON.
+
+### 12.10 Navigation
+
+Projet, Problèmes, Diagnostic, Comparateur, Ansatz, Mes ansatz, Entraînement, Recommandation, Plateau stérile, Jobs et matériel, Équipe. La page Rapport s'ouvre depuis la Recommandation.
+
+### 12.11 Tests (état vert sur `feature/m14-release`, avant la fusion finale)
+
+| Suite | Commande | Résultat |
+|---|---|---|
+| Bibliothèque | `pytest` (racine) | 359 tests |
+| API | `cd api; pytest` | 288 tests sous Windows ; 286 tests sous Linux (conteneur `python:3.12-slim`, une fois) |
+| Front | `cd web; npm test` | 81 tests |
+| Build front | `cd web; npm run build` | réussi |
+| Bout en bout | `cd web; npx playwright test` | 2 parcours ; 3 réussites sur 3 chacun au jalon 7, puis réussis au jalon 8 |
+| Docker | `docker compose up --build` | démarré pour de vrai sur un volume neuf : modèle entraîné en 103 s, démo (6 runs) réussie, `/predict` en 200, modèle réutilisé au redémarrage |
+
+Suites validées sous Windows ; API validée une fois sous Linux (conteneur) ; bibliothèque et front non testés sous Linux.
+
+### 12.12 État Git
+
+Voir le rapport final de la mission v0.3 (dans la conversation) et `git log --oneline --graph release/v0.3`. Tag local `v0.3.0` sur `release/v0.3` ; rien n'a été poussé ; `main` n'a pas été modifiée.
+
+### 12.13 Points ouverts et limites (v0.3)
+
+- **Blocage inexpliqué** (jalon 5) : la suite de l'API s'est une fois bloquée environ 45 minutes sous Windows ; la relance avec `faulthandler_timeout=300` est passée. Le minuteur contourne le problème, il ne le corrige pas.
+- **Blocage expliqué et corrigé** (jalon 8) : sous Linux, `fork` bloquait un routage Qiskit dans un processus de calcul après une transpilation dans le processus de l'API ; processus créés par `spawn` partout depuis.
+- **Références classiques simples** : marginales indépendantes et arbre de Chow-Liu ; un verdict « le quantique se justifie » ne vaut que face à elles.
+- **IA** : intervalles absents pour les problèmes CSV et à 7 et 8 qubits ; une seule graine par configuration de la grille.
+- **Bruit** : profils d'ordre de grandeur, pas des calibrations ; rz sans erreur.
+- **Rendu** : vérifié par captures Playwright dans Chromium seulement ; impression réelle (PDF, papier) et contenu de l'export JSON non vérifiés.
+
+### Corrections prévues en v0.3.1 (non codées)
+
+- **Affichage de la recommandation** : étiqueter les deux messages de couverture (TVD finale et dégradation) ; remplacer « leurs intervalles se recouvrent » par « aucun intervalle fiable : impossible de les départager » quand aucun ansatz n'a d'intervalle ; citer toutes les couvertures dans la partie Méthode du rapport.
+- **Priorité haute** : décider si une famille est connue par une distance dans l'espace des `problem_features`. Un Bars-and-Stripes importé en CSV est aujourd'hui classé « famille inconnue », donc sans intervalle.
+- **Référence classique plus forte** : mélange de lois, ou petite machine de Boltzmann. Les références actuelles (marginales indépendantes, arbre de Chow-Liu) sont **simples** : battre l'arbre de Chow-Liu ne prouve pas un avantage sur les méthodes classiques en général.
+- **Ansatz sans intrication** : calculer leur valeur directement (meilleure distribution produit, comme la référence « marginales indépendantes ») plutôt que la prédire. Aujourd'hui, la borne basse prédite de RotationOnly peut descendre à 0,25 alors que la théorie interdit de descendre sous environ 0,37 sur le cas observé.
+- **Grille** : entraîner chaque configuration avec plusieurs graines, pour limiter l'effet des minima locaux.
+

@@ -176,6 +176,6 @@ describe("axe logarithmique", () => {
 describe("export CSV", () => {
   it("ligne de commentaire, virgule séparatrice, point décimal", () => {
     const csv = toCsv([{ ansatz: "brick_wall", value: 0.5 }, { ansatz: "a,b", value: 1.25 }], { qubits: 4, graine: 0 });
-    expect(csv.split("\n")).toEqual(["# qubits=4; graine=0; version=0.2.0", "ansatz,value", "brick_wall,0.5", '"a,b",1.25', ""]);
+    expect(csv.split("\n")).toEqual(["# qubits=4; graine=0; version=0.3.0", "ansatz,value", "brick_wall,0.5", '"a,b",1.25', ""]);
   });
 });
