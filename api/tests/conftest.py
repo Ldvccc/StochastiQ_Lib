@@ -26,6 +26,8 @@ def settings(tmp_path) -> Settings:
         secret_key="secret-de-test-assez-long-pour-hs256-0123456789",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         cors_origin="http://front.test",
+        # Dossier vide : les tests ne dépendent pas d'un modèle entraîné sur le poste.
+        models_dir=str(tmp_path / "models"),
     )
 
 

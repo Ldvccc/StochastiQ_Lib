@@ -9,5 +9,8 @@ dist/
 .env
 *.db
 *.db-journal
+# Modèles de prédiction (scripts/train_predictor.py), régénérables.
+models/
+api/models/
 web/test-results/
 web/playwright-report/

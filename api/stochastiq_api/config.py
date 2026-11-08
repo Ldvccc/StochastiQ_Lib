@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 12
     # Durée maximale d'un run, en secondes (10 minutes).
     run_timeout_seconds: float = 600
+    # Dossier du modèle de prédiction (scripts/train_predictor.py) ; /data/models sous Docker.
+    models_dir: str = "./models"
 
     def check(self) -> None:
         """Lève ``RuntimeError`` si la configuration n'est pas sûre hors développement."""
