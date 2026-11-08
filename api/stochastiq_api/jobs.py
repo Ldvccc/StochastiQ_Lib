@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .db import utcnow
 from .events import record
+from .ml.results import record_run
 from .models import Run
 from .runner import execute
 
@@ -84,6 +85,18 @@ class RunManager:
                 payload["error"] = error
             record(db, run.project_id, run.created_by, event, payload)
             db.commit()
+            if status == "done":
+                self._record_results(db, run)
+
+    @staticmethod
+    def _record_results(db: Session, run: Run) -> None:
+        """Alimente la base de résultats ; un échec ici ne change pas l'état du run, déjà validé."""
+        try:
+            record_run(db, run)
+            db.commit()
+        except Exception as error:
+            db.rollback()
+            logger.warning("Run %s : lignes de résultats non enregistrées (%s : %s)", run.id, type(error).__name__, error)
 
     def _run(self, run_id: int) -> None:
         with self._sessions() as db:

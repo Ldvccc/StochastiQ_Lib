@@ -71,6 +71,8 @@ class ProjectIn(Input):
 class ProjectPatch(Input):
     name: Name | None = None
     description: str | None = Field(default=None, max_length=2000)
+    # Partage des résultats du projet avec l'IA de prédiction (faux par défaut).
+    share_results: bool | None = None
 
 
 class ProjectOut(Output):
@@ -78,6 +80,7 @@ class ProjectOut(Output):
     name: str
     slug: str
     description: str
+    share_results: bool
     created_by: int | None
     created_at: datetime
     role: Role

@@ -18,7 +18,7 @@ export const DEFAULT_PERMISSIONS: Permission[] = [
   { action: "problems", label: "Créer, renommer et supprimer des problèmes", min_role: "editor" },
   { action: "custom_ansatz", label: "Créer, renommer et supprimer des ansatz personnalisés", min_role: "editor" },
   { action: "machines", label: "Gérer les machines (fournisseur et libellé, sans clé)", min_role: "key_manager" },
-  { action: "edit_project", label: "Modifier le nom et la description du projet", min_role: "owner" },
+  { action: "edit_project", label: "Modifier le nom et la description du projet, partager ses résultats avec l'IA", min_role: "owner" },
   { action: "invite", label: "Inviter des membres et révoquer des invitations", min_role: "owner" },
   { action: "manage_members", label: "Changer les rôles et les titres, retirer des membres", min_role: "owner" },
   { action: "delete_project", label: "Supprimer le projet", min_role: "owner" },

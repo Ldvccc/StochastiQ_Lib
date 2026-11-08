@@ -141,6 +141,12 @@ def _hardware(p: dict) -> dict:
     return hardware_cost(ansatz, topology=p["topology"], seed=p["seed"])
 
 
+def evaluate_under_noise(ansatz, learned, target, evaluation: dict, seed: int) -> dict:
+    """Métriques de la distribution bruitée obtenue avec les paramètres appris ``learned``."""
+    noisy = noisy_probabilities(ansatz, learned, evaluation["profile"], evaluation["topology"], seed)
+    return {**evaluation, "probabilities": noisy, "metrics": distribution_metrics(target, noisy)}
+
+
 def _training(p: dict) -> dict:
     ansatz = make_circuit(p["ansatz"], p["n_qubits"], p["layers"])
     result = train_qcbm(
@@ -155,9 +161,7 @@ def _training(p: dict) -> dict:
     )
     noise = None
     if p.get("evaluate_noise") is not None:
-        evaluation = p["evaluate_noise"]
-        noisy = noisy_probabilities(ansatz, result["params"], evaluation["profile"], evaluation["topology"], p["seed"])
-        noise = {**evaluation, "probabilities": noisy, "metrics": distribution_metrics(p["target"], noisy)}
+        noise = evaluate_under_noise(ansatz, result["params"], p["target"], p["evaluate_noise"], p["seed"])
     return {
         **result,
         "baselines": classical_baselines(p["target"]),

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base, utcnow
@@ -23,6 +23,8 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(100))
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     description: Mapped[str] = mapped_column(Text, default="")
+    # Si vrai, les résultats du projet servent à entraîner l'IA de prédiction (choix du propriétaire).
+    share_results: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -160,4 +162,36 @@ class CustomAnsatz(Base):
     content: Mapped[str] = mapped_column(Text)
     n_qubits: Mapped[int | None] = mapped_column(Integer, nullable=True)  # fixé (QASM, spec « custom »), sinon None
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Result(Base):
+    """Ligne de la base de résultats : caractéristiques et grandeurs mesurées, jamais de probabilités brutes.
+
+    ``source`` vaut « grid » (grille de référence, scripts/build_results.py)
+    ou « run » (run réussi d'un projet). ``config_key`` identifie une
+    configuration de la grille (doublons ignorés), None pour un run.
+    """
+
+    __tablename__ = "results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(10), index=True)
+    type: Mapped[str] = mapped_column(String(20), index=True)
+    config_key: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    ansatz: Mapped[str] = mapped_column(String(120))
+    ansatz_fingerprint: Mapped[str] = mapped_column(String(80), index=True)
+    n_qubits: Mapped[int] = mapped_column(Integer)
+    layers: Mapped[int] = mapped_column(Integer)
+    circuit_features: Mapped[dict] = mapped_column(JSON)
+    problem_family: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    problem_features: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    noise_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    noise_topology: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    quantities: Mapped[dict] = mapped_column(JSON)
+    library_version: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

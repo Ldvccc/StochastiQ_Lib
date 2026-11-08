@@ -42,7 +42,15 @@ def resolve_problem(db: Session, project_id: int, params: dict) -> dict:
     problem = db.get(Problem, params["problem_id"])
     if problem is None or problem.project_id != project_id:
         raise HTTPException(422, f"Problème n° {params['problem_id']} introuvable dans ce projet.")
-    return {**params, "n_qubits": problem.n_qubits, "problem_name": problem.name, "target": problem.probabilities}
+    # Famille : distribution de référence, ou « csv » (sert à la validation de l'IA par famille laissée de côté).
+    family = problem.source_params.get("distribution") if problem.origin == "reference" else "csv"
+    return {
+        **params,
+        "n_qubits": problem.n_qubits,
+        "problem_name": problem.name,
+        "problem_family": family,
+        "target": problem.probabilities,
+    }
 
 
 def resolve_params(db: Session, project_id: int, kind: str, params: dict) -> dict:
