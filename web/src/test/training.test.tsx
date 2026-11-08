@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { LossChart } from "../components/charts";
-import { trainingSentence, type TrainingResult } from "../lib/reading";
+import { NO_NOISE_CHOICE, NoiseProfileField } from "../components/science";
+import { degradationSentence, noiseEvaluationSentence, profileLabel, trainingSentence, type TrainingResult } from "../lib/reading";
 import { trainingErrors, type TrainingForm } from "../pages/TrainingPage";
 
 function result(tvd: number, chowLiu: number): TrainingResult {
@@ -22,7 +23,7 @@ function result(tvd: number, chowLiu: number): TrainingResult {
   };
 }
 
-const FORM: TrainingForm = { problem: 1, ansatz: "cat:hardware_efficient", layers: 2, loss: "kl", optimizer: "adam", max_iter: 200, learning_rate: 0.1, exact: true, shots: 1000, seed: 0 };
+const FORM: TrainingForm = { problem: 1, ansatz: "cat:hardware_efficient", layers: 2, loss: "kl", optimizer: "adam", max_iter: 200, learning_rate: 0.1, exact: true, shots: 1000, seed: 0, noise: NO_NOISE_CHOICE, noiseTopology: "line" };
 
 describe("entraînement", () => {
   it("phrase : l'ansatz fait mieux que les références", () => {
@@ -51,6 +52,36 @@ describe("entraînement", () => {
     expect(trainingErrors({ ...FORM, exact: false, shots: 50 }, 2, null).shots).toBeDefined();
     expect(trainingErrors({ ...FORM, problem: null }, null, null).problem).toBeDefined();
     expect(trainingErrors(FORM, 2, 3).ansatz).toBe("Cet ansatz fixe 3 qubits, le problème en a 2.");
+  });
+
+  it("taux personnalisés validés entre 0 et 0,5", () => {
+    const custom = { mode: "custom" as const, rates: { p1: 0.6, p2: 0.01, readout: NaN } };
+    const errors = trainingErrors({ ...FORM, noise: custom }, 2, null);
+    expect(errors.p1).toBe("Taux entre 0 et 0,5.");
+    expect(errors.readout).toBe("Taux entre 0 et 0,5.");
+    expect(errors.p2).toBeUndefined();
+    expect(trainingErrors({ ...FORM, noise: { ...custom, mode: "fort" } }, 2, null)).toEqual({});
+  });
+
+  it("phrases du bruit", () => {
+    expect(profileLabel("fort")).toBe("« fort »");
+    expect(profileLabel({ p1: 0.001, p2: 0.01, readout: 0.02 })).toBe("personnalisé (p1 0,001 ; p2 0,01 ; lecture 0,02)");
+    const trained = { ...result(0.01, 0.05), noise: { profile: "fort" as const, topology: "line" as const, probabilities: [], metrics: { kl: 0, tvd: 0.0821, hellinger: 0 } } };
+    expect(noiseEvaluationSentence(trained)).toBe(
+      "Avec les mêmes paramètres appris, sous le bruit « fort » (topologie ligne), la TVD passe de 0,0100 à 0,0821. " +
+        "Les profils de bruit sont des ordres de grandeur, pas des calibrations de machines réelles.",
+    );
+    const noise = { mean_tvd: 0.1234, std_tvd: 0.02, tvds: Array(20).fill(0.1234), profile: { p1: 0.001, p2: 0.005, readout: 0.01 }, topology: "line" as const };
+    expect(degradationSentence(noise, "moyen")).toContain("s'écarte en moyenne de 0,1234 en TVD de la sortie idéale (écart type 0,0200, 20 jeux de paramètres aléatoires)");
+  });
+
+  it("liste de bruit : les taux n'apparaissent qu'en mode personnalisé", () => {
+    const { rerender } = render(<NoiseProfileField label="Bruit" choice={NO_NOISE_CHOICE} onChange={() => {}} errors={{}} />);
+    expect(screen.getByRole("option", { name: "Fort (p1 0,01, p2 0,02, lecture 0,05)" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Erreur de lecture")).not.toBeInTheDocument();
+    rerender(<NoiseProfileField label="Bruit" choice={{ ...NO_NOISE_CHOICE, mode: "custom" }} onChange={() => {}} errors={{ p2: "Taux entre 0 et 0,5." }} />);
+    expect(screen.getByLabelText("Erreur de lecture")).toHaveValue(0.01);
+    expect(screen.getByText("Taux entre 0 et 0,5.")).toBeInTheDocument();
   });
 
   it("courbe de perte en échelle log, graduations françaises", () => {

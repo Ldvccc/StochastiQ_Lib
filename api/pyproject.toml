@@ -24,6 +24,8 @@ dependencies = [
     "httpx>=0.27",
     # OpenQASM 3 pour les ansatz du client.
     "qiskit_qasm3_import>=0.5",
+    # Bruit simulé (stochastiq.noise), en matrice densité.
+    "qiskit-aer>=0.15",
 ]
 
 [project.optional-dependencies]

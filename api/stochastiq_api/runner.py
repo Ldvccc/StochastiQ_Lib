@@ -12,6 +12,9 @@ import numpy as np
 from stochastiq import (
     build_ansatz,
     classical_baselines,
+    distribution_metrics,
+    noisy_probabilities,
+    noisy_tvd,
     problem_features,
     train_qcbm,
     build_from_spec,
@@ -62,6 +65,10 @@ def ansatz_key(ref) -> str:
     return ref if isinstance(ref, str) else ref["custom"]["name"]
 
 
+# Tirages de la carte « Dégradation sous bruit » du diagnostic (topologie en ligne).
+DIAGNOSTIC_NOISE_SAMPLES = 20
+
+
 def _diagnostic(p: dict) -> dict:
     ansatz = make_circuit(p["ansatz"], p["n_qubits"], p["layers"])
     gradient = gradient_variance_details(
@@ -79,6 +86,11 @@ def _diagnostic(p: dict) -> dict:
         },
         "stats": circuit_stats(ansatz),
         "histogram": fidelity_histogram(ansatz, n_samples=p["n_samples"], seed=p["seed"]),
+        "noise": (
+            noisy_tvd(ansatz, p["noise_profile"], "line", n_samples=DIAGNOSTIC_NOISE_SAMPLES, seed=p["seed"])
+            if p.get("noise_profile") is not None
+            else None
+        ),
     }
 
 
@@ -141,10 +153,32 @@ def _training(p: dict) -> dict:
         shots=p["shots"],
         seed=p["seed"],
     )
-    return {**result, "baselines": classical_baselines(p["target"]), "problem_features": problem_features(p["target"])}
+    noise = None
+    if p.get("evaluate_noise") is not None:
+        evaluation = p["evaluate_noise"]
+        noisy = noisy_probabilities(ansatz, result["params"], evaluation["profile"], evaluation["topology"], p["seed"])
+        noise = {**evaluation, "probabilities": noisy, "metrics": distribution_metrics(p["target"], noisy)}
+    return {
+        **result,
+        "baselines": classical_baselines(p["target"]),
+        "problem_features": problem_features(p["target"]),
+        "noise": noise,
+    }
 
 
-KINDS = {"diagnostic": _diagnostic, "compare": _compare, "scaling": _scaling, "hardware": _hardware, "training": _training}
+def _noise(p: dict) -> dict:
+    ansatz = make_circuit(p["ansatz"], p["n_qubits"], p["layers"])
+    return noisy_tvd(ansatz, p["profile"], p["topology"], n_samples=p["n_samples"], seed=p["seed"])
+
+
+KINDS = {
+    "diagnostic": _diagnostic,
+    "compare": _compare,
+    "scaling": _scaling,
+    "hardware": _hardware,
+    "training": _training,
+    "noise": _noise,
+}
 
 
 def execute(kind: str, params: dict) -> dict:

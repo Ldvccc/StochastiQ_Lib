@@ -19,6 +19,7 @@ export const KIND_LABELS: Record<string, string> = {
   scaling: "Plateau stérile",
   hardware: "Coût matériel",
   training: "Entraînement",
+  noise: "Bruit",
 };
 
 const PAGE_SIZE = 20;

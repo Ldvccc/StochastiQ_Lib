@@ -173,6 +173,7 @@ export interface TrainingResult {
   optimizer: string;
   probabilities: number[];
   baselines: Record<"independent" | "chow_liu", { probabilities: number[]; metrics: DistributionMetrics; n_parameters: number }>;
+  noise?: NoiseEvaluationResult | null;
 }
 
 export const BASELINE_LABELS: Record<string, string> = {
@@ -207,6 +208,67 @@ export function trainingSentence(result: TrainingResult, shots: number | null): 
     ? `Une seule initialisation, entraînée avec ${shots} tirages par évaluation ; TVD calculée sur les probabilités exactes.`
     : "Une seule initialisation, en simulation exacte sans bruit.";
   return `${opening} ${comparison} ${scope}`;
+}
+
+// ---- Bruit simulé ----
+
+export type NoiseRates = { p1: number; p2: number; readout: number };
+export type NoiseProfile = "faible" | "moyen" | "fort" | NoiseRates;
+export type NoiseTopology = "line" | "ring" | "full";
+
+/** Taux des profils nommés (copie de stochastiq.noise.PROFILES) : ordres de grandeur, pas des calibrations. */
+export const NOISE_PROFILES: Record<"faible" | "moyen" | "fort", NoiseRates> = {
+  faible: { p1: 1e-4, p2: 5e-4, readout: 1e-3 },
+  moyen: { p1: 1e-3, p2: 5e-3, readout: 1e-2 },
+  fort: { p1: 1e-2, p2: 2e-2, readout: 5e-2 },
+};
+
+export const NOISE_TOPOLOGY_LABELS: Record<NoiseTopology, string> = { line: "ligne", ring: "anneau", full: "complète" };
+
+export const NOISE_DISCLAIMER = "Les profils de bruit sont des ordres de grandeur, pas des calibrations de machines réelles.";
+
+/** Écriture française d'un taux : « 0,001 », « 0,0005 ». */
+export function formatRate(value: number): string {
+  return String(value).replace(".", ",");
+}
+
+/** Libellé d'un profil : « fort » ou « personnalisé (p1 0,001 ; p2 0,01 ; lecture 0,02) ». */
+export function profileLabel(profile: NoiseProfile): string {
+  if (typeof profile === "string") return `« ${profile} »`;
+  return `personnalisé (p1 ${formatRate(profile.p1)} ; p2 ${formatRate(profile.p2)} ; lecture ${formatRate(profile.readout)})`;
+}
+
+export interface NoiseEvaluationResult {
+  profile: NoiseProfile;
+  topology: NoiseTopology;
+  probabilities: number[];
+  metrics: DistributionMetrics;
+}
+
+/** Phrase de l'évaluation sous bruit d'un entraînement : TVD exacte puis bruitée, mêmes paramètres appris. */
+export function noiseEvaluationSentence(result: TrainingResult): string {
+  const noise = result.noise!;
+  return (
+    `Avec les mêmes paramètres appris, sous le bruit ${profileLabel(noise.profile)} (topologie ${NOISE_TOPOLOGY_LABELS[noise.topology]}), ` +
+    `la TVD passe de ${formatMetric(result.metrics.tvd)} à ${formatMetric(noise.metrics.tvd)}. ${NOISE_DISCLAIMER}`
+  );
+}
+
+export interface NoiseTvdResult {
+  mean_tvd: number;
+  std_tvd: number;
+  tvds: number[];
+  profile: NoiseRates;
+  topology: NoiseTopology;
+}
+
+/** Phrase de la carte « Dégradation sous bruit » : TVD moyenne idéal / bruité sur des paramètres aléatoires. */
+export function degradationSentence(noise: NoiseTvdResult, profile: NoiseProfile): string {
+  return (
+    `Sous le bruit ${profileLabel(profile)} (topologie ${NOISE_TOPOLOGY_LABELS[noise.topology]}), la sortie s'écarte en moyenne de ` +
+    `${formatMetric(noise.mean_tvd)} en TVD de la sortie idéale (écart type ${formatMetric(noise.std_tvd)}, ${noise.tvds.length} jeux de paramètres aléatoires). ` +
+    NOISE_DISCLAIMER
+  );
 }
 
 // ---- Axe logarithmique ----

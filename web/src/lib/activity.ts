@@ -7,6 +7,7 @@ const KIND_LABELS: Record<string, string> = {
   scaling: "étude de plateau stérile",
   hardware: "coût matériel",
   training: "entraînement",
+  noise: "bruit",
 };
 
 function role(value: unknown): string {

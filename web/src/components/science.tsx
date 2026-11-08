@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { AnsatzInfo, AnsatzRef, Comment, CustomAnsatz, Run, Topology } from "../api/types";
 import { CSV_LABEL, csvParams, downloadCsv, toCsv } from "../lib/csv";
 import { formatDateTime } from "../lib/format";
+import { formatRate, NOISE_PROFILES, type NoiseProfile, type NoiseRates } from "../lib/reading";
 import { useAsync } from "../lib/useAsync";
 import { Empty, ErrorState, GuardedButton, Loading, StatusPill } from "./common";
 import { useProject } from "./ProjectContext";
@@ -189,5 +190,69 @@ export function NumberField({
         </span>
       )}
     </label>
+  );
+}
+
+// ---- Profil de bruit ----
+
+export interface NoiseChoice {
+  mode: "none" | "faible" | "moyen" | "fort" | "custom";
+  rates: NoiseRates;
+}
+
+export const NO_NOISE_CHOICE: NoiseChoice = { mode: "none", rates: { ...NOISE_PROFILES.moyen } };
+
+/** Profil envoyé à l'API : nom, taux personnalisés, ou null sans bruit. */
+export function noiseProfileValue(choice: NoiseChoice): NoiseProfile | null {
+  if (choice.mode === "none") return null;
+  return choice.mode === "custom" ? { ...choice.rates } : choice.mode;
+}
+
+/** Erreurs des taux personnalisés (mêmes bornes que l'API : 0 à 0,5). */
+export function noiseErrors(choice: NoiseChoice): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (choice.mode !== "custom") return errors;
+  for (const key of ["p1", "p2", "readout"] as const) {
+    const value = choice.rates[key];
+    if (!(value >= 0 && value <= 0.5)) errors[key] = "Taux entre 0 et 0,5.";
+  }
+  return errors;
+}
+
+const RATE_LABELS = { p1: "Dépolarisation 1 qubit", p2: "Dépolarisation 2 qubits", readout: "Erreur de lecture" } as const;
+
+/** Liste « Bruit » (aucun, faible, moyen, fort, personnalisé) et, en mode personnalisé, les trois taux. */
+export function NoiseProfileField({ label, choice, onChange, errors }: { label: string; choice: NoiseChoice; onChange: (choice: NoiseChoice) => void; errors: Record<string, string> }) {
+  return (
+    <>
+      <label>
+        {label}
+        <select value={choice.mode} onChange={(e) => onChange({ ...choice, mode: e.target.value as NoiseChoice["mode"] })}>
+          <option value="none">Aucun</option>
+          {(["faible", "moyen", "fort"] as const).map((name) => (
+            <option key={name} value={name}>
+              {name[0].toUpperCase() + name.slice(1)} (p1 {formatRate(NOISE_PROFILES[name].p1)}, p2 {formatRate(NOISE_PROFILES[name].p2)}, lecture {formatRate(NOISE_PROFILES[name].readout)})
+            </option>
+          ))}
+          <option value="custom">Personnalisé</option>
+        </select>
+      </label>
+      {choice.mode === "custom" &&
+        (["p1", "p2", "readout"] as const).map((key) => (
+          <label key={key} style={{ minWidth: 120 }}>
+            {RATE_LABELS[key]}
+            <input
+              type="number"
+              step="0.0001"
+              min={0}
+              max={0.5}
+              value={Number.isNaN(choice.rates[key]) ? "" : choice.rates[key]}
+              aria-invalid={Boolean(errors[key])}
+              onChange={(e) => onChange({ ...choice, rates: { ...choice.rates, [key]: e.target.value === "" ? NaN : Number(e.target.value) } })}
+            />
+            {errors[key] && <span className="field-error">{errors[key]}</span>}
+          </label>
+        ))}
+    </>
   );
 }

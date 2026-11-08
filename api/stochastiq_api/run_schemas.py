@@ -20,7 +20,7 @@ Samples = Annotated[int, Field(ge=50, le=5000)]
 Seed = Annotated[int, Field(ge=0, le=1_000_000)]
 Observable = Literal["Z0", "Zmean", "Zall"]
 
-RunKind = Literal["diagnostic", "compare", "scaling", "hardware", "training"]
+RunKind = Literal["diagnostic", "compare", "scaling", "hardware", "training", "noise"]
 RunStatus = Literal["pending", "running", "done", "failed"]
 
 
@@ -41,6 +41,28 @@ def _unique(refs: list) -> list:
     return refs
 
 
+Rate = Annotated[float, Field(ge=0, le=0.5)]
+# Topologies simulables en matrice densité (l'hexagone lourd, 19 qubits, ne l'est pas).
+NoiseTopology = Literal["line", "ring", "full"]
+
+
+class CustomNoiseProfile(Input):
+    """Profil personnalisé : dépolarisation à 1 et 2 qubits, erreur de lecture."""
+
+    p1: Rate
+    p2: Rate
+    readout: Rate
+
+
+# Profil nommé (ordres de grandeur, pas des calibrations) ou personnalisé.
+NoiseProfile = Union[Literal["faible", "moyen", "fort"], CustomNoiseProfile]
+
+
+class NoiseEvaluation(Input):
+    profile: NoiseProfile
+    topology: NoiseTopology = "line"
+
+
 class DiagnosticParams(Input):
     ansatz: AnsatzRef
     n_qubits: Qubits
@@ -48,6 +70,8 @@ class DiagnosticParams(Input):
     n_samples: Samples = 1000
     seed: Seed = 0
     observable: Observable = "Z0"
+    # Facultatif : carte « Dégradation sous bruit » (TVD moyenne idéal / bruité, ligne, 20 tirages).
+    noise_profile: NoiseProfile | None = None
 
 
 class CompareParams(Input):
@@ -103,12 +127,26 @@ class TrainingParams(Input):
     # None : probabilités exactes ; sinon, estimation par tirages pendant l'entraînement.
     shots: Annotated[int, Field(ge=100, le=100_000)] | None = None
     seed: Seed = 0
+    # Facultatif : métriques finales recalculées sous bruit avec les paramètres appris.
+    evaluate_noise: NoiseEvaluation | None = None
 
     @model_validator(mode="after")
     def _tvd_not_with_adam(self) -> "TrainingParams":
         if self.loss == "tvd" and self.optimizer == "adam":
             raise ValueError("La TVD n'est pas dérivable : avec la perte « tvd », choisissez SPSA ou COBYLA.")
         return self
+
+
+class NoiseParams(Input):
+    """TVD moyenne entre sortie idéale et sortie bruitée, sur des paramètres aléatoires."""
+
+    ansatz: AnsatzRef
+    n_qubits: Qubits
+    layers: Layers
+    profile: NoiseProfile
+    topology: NoiseTopology = "line"
+    n_samples: Annotated[int, Field(ge=1, le=200)] = 20
+    seed: Seed = 0
 
 
 class DiagnosticRunIn(Input):
@@ -136,8 +174,14 @@ class TrainingRunIn(Input):
     params: TrainingParams
 
 
+class NoiseRunIn(Input):
+    kind: Literal["noise"]
+    params: NoiseParams
+
+
 RunIn = Annotated[
-    Union[DiagnosticRunIn, CompareRunIn, ScalingRunIn, HardwareRunIn, TrainingRunIn], Field(discriminator="kind")
+    Union[DiagnosticRunIn, CompareRunIn, ScalingRunIn, HardwareRunIn, TrainingRunIn, NoiseRunIn],
+    Field(discriminator="kind"),
 ]
 
 
