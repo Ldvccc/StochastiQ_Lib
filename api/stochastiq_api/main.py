@@ -10,7 +10,7 @@ from . import __version__
 from .config import Settings
 from .db import make_engine, make_sessionmaker, upgrade_database
 from .jobs import RunManager, mark_orphans_failed
-from .routers import auth, catalog, collaboration, invitations, meta, projects, runs
+from .routers import auth, catalog, collaboration, invitations, meta, problems, projects, runs
 from .security import MaskInvitationTokens
 
 
@@ -53,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         catalog.router,
         runs.router,
         collaboration.router,
+        problems.router,
     ):
         app.include_router(router)
 

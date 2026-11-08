@@ -34,6 +34,8 @@ export function describeEvent(event: ActivityEvent): string {
       return `${p.name} a rejoint le projet comme ${role(p.role).toLowerCase()}.`;
     case "role_changed":
       return `${who} a changé le rôle de ${p.name} : ${role(p.old_role).toLowerCase()} vers ${role(p.new_role).toLowerCase()}.`;
+    case "problem_added":
+      return `${who} a ajouté le problème « ${p.name} » (${p.n_qubits} qubits, ${p.origin === "csv" ? "fichier CSV" : "référence"}).`;
     case "machine_added":
       return `${who} a ajouté la machine ${p.provider} « ${p.label} ».`;
     default:
