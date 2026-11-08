@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import create_project, register
-from stochastiq_api.jobs import ORPHAN_MESSAGE, format_duration
+from stochastiq_api.jobs import MP_CONTEXT, ORPHAN_MESSAGE, format_duration
 from stochastiq_api.main import create_app
 from stochastiq_api.models import Run
 
@@ -201,3 +201,8 @@ def test_isolation_des_runs(client, owner_project):
         f"/projects/{other_project}/runs/1/comments", json={"text": "intrusion"}, headers=other
     ).status_code == 404
     assert launch(client, other, project_id, "diagnostic", SMALL["diagnostic"]).status_code == 404
+
+
+def test_processus_de_calcul_crees_par_spawn():
+    # « fork » bloque un routage Qiskit dans l'enfant après une transpilation dans le parent (Linux, Docker).
+    assert MP_CONTEXT.get_start_method() == "spawn"

@@ -8,6 +8,7 @@ sans toucher aux autres calculs.
 """
 
 import logging
+import multiprocessing
 import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -24,6 +25,12 @@ from .runner import execute
 logger = logging.getLogger(__name__)
 
 MAX_WORKERS = 2
+
+# Processus de calcul créés par « spawn » sur toutes les plateformes (déjà le cas sous Windows).
+# Sous Linux, « fork » copie le processus de l'API, qui exécute lui-même des transpilations Qiskit
+# (caractéristiques des circuits dans _finish) : le pool de threads Rust de Qiskit hérité par
+# l'enfant n'a plus de threads, et un routage dans l'enfant se bloque (constaté sous Docker).
+MP_CONTEXT = multiprocessing.get_context("spawn")
 
 ORPHAN_MESSAGE = "Interrompu : l'API a redémarré avant la fin du calcul."
 
@@ -108,7 +115,7 @@ class RunManager:
             kind, params = run.kind, dict(run.params)
             db.commit()
 
-        executor = ProcessPoolExecutor(max_workers=1)
+        executor = ProcessPoolExecutor(max_workers=1, mp_context=MP_CONTEXT)
         with self._lock:
             self._active.add(executor)
         try:
