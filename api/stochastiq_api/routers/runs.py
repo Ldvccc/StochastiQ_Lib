@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, sta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..ansatz_refs import resolve_params
 from ..db import get_db
 from ..deps import ProjectAccess, require_role
 from ..events import record
@@ -57,12 +58,8 @@ def launch_run(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"{MAX_ACTIVE_RUNS_PER_USER} runs au maximum en cours par utilisateur : attendez la fin d'un run.",
         )
-    run = Run(
-        project_id=access.project.id,
-        created_by=access.user.id,
-        kind=data.kind,
-        params=data.params.model_dump(),
-    )
+    params = resolve_params(db, access.project.id, data.kind, data.params.model_dump())
+    run = Run(project_id=access.project.id, created_by=access.user.id, kind=data.kind, params=params)
     db.add(run)
     db.flush()
     record(db, run.project_id, access.user.id, "run_launched", {"run_id": run.id, "kind": run.kind})

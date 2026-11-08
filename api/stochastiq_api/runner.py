@@ -4,12 +4,16 @@ Chaque fonction n'appelle que la bibliothèque ``stochastiq`` et retourne un
 résultat sérialisable en JSON standard (les ``NaN`` deviennent ``None``).
 """
 
+import json
 import math
 
 import numpy as np
 
 from stochastiq import (
     build_ansatz,
+    build_from_spec,
+    load_qasm,
+    validate_ansatz,
     circuit_stats,
     compare,
     entangling_capability,
@@ -40,8 +44,23 @@ def to_json(value):
     return value
 
 
+def make_circuit(ref, n_qubits: int, layers: int):
+    """Circuit d'un ansatz du catalogue (nom) ou personnalisé (``{"custom": {...}}``, résolu par l'API)."""
+    if isinstance(ref, str):
+        return build_ansatz(ref, n_qubits, layers)
+    custom = ref["custom"]
+    if custom["format"] == "spec":
+        return validate_ansatz(build_from_spec(json.loads(custom["content"]), n_qubits, layers))
+    return validate_ansatz(load_qasm(custom["content"]))
+
+
+def ansatz_key(ref) -> str:
+    """Nom affiché d'un ansatz dans les résultats (nom du catalogue ou nom donné par le client)."""
+    return ref if isinstance(ref, str) else ref["custom"]["name"]
+
+
 def _diagnostic(p: dict) -> dict:
-    ansatz = build_ansatz(p["ansatz"], p["n_qubits"], p["layers"])
+    ansatz = make_circuit(p["ansatz"], p["n_qubits"], p["layers"])
     gradient = gradient_variance_details(
         ansatz, n_samples=p["n_samples"], observable=p["observable"], seed=p["seed"]
     )
@@ -61,7 +80,12 @@ def _diagnostic(p: dict) -> dict:
 
 
 def _compare(p: dict) -> dict:
-    circuits = {name: build_ansatz(name, p["n_qubits"], p["layers"]) for name in p["ansatz"]}
+    circuits = {}
+    for ref in p["ansatz"]:
+        key = ansatz_key(ref)
+        while key in circuits:  # un nom personnalisé peut répéter un nom du catalogue
+            key += " (personnalisé)"
+        circuits[key] = make_circuit(ref, p["n_qubits"], p["layers"])
     df = compare(circuits, n_samples=p["n_samples"], seed=p["seed"], n_seeds=p["n_seeds"])
     front = pareto_front(list(zip(df["expressibility"], df["gradient_variance_active"])))
     rows = [
@@ -75,9 +99,9 @@ def _scaling(p: dict) -> dict:
     observables = ["Z0", "Zall"] if p["compare_observables"] else [p["observable"]]
     series = []
     for observable in observables:
-        for name in p["ansatz"]:
+        for ref in p["ansatz"]:
             df = gradient_scaling(
-                name,
+                ref if isinstance(ref, str) else (lambda n, layers, ref=ref: make_circuit(ref, n, layers)),
                 range(p["qubit_min"], p["qubit_max"] + 1),
                 layers=p["layers"],
                 layers_mode=p["layers_mode"],
@@ -87,7 +111,7 @@ def _scaling(p: dict) -> dict:
             )
             series.append(
                 {
-                    "ansatz": name,
+                    "ansatz": ansatz_key(ref),
                     "observable": observable,
                     "rows": df.to_dict(orient="records"),
                     "fit_active": fit_decay(df["n_qubits"], df["active_mean_variance"]),
@@ -98,7 +122,7 @@ def _scaling(p: dict) -> dict:
 
 
 def _hardware(p: dict) -> dict:
-    ansatz = build_ansatz(p["ansatz"], p["n_qubits"], p["layers"])
+    ansatz = make_circuit(p["ansatz"], p["n_qubits"], p["layers"])
     return hardware_cost(ansatz, topology=p["topology"], seed=p["seed"])
 
 
