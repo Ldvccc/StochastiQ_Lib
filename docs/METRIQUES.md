@@ -146,7 +146,7 @@ Métriques finales (`distribution_metrics`) : KL(cible ‖ modèle), TVD et dist
 - **marginales indépendantes** : produit des lois de chaque bit (n paramètres) ;
 - **arbre de Chow-Liu** : arbre couvrant de poids maximal pour l'information mutuelle entre bits (algorithme de Prim depuis le qubit 0), puis lois conditionnelles le long de l'arbre (1 + 2(n − 1) paramètres).
 
-L'écran Entraînement compare l'ansatz à la meilleure des deux (TVD la plus basse) ; écart de moins de 1e-4 en TVD = égalité.
+L'écran Entraînement compare l'ansatz à la meilleure des deux (TVD la plus basse), avec la règle des 10 % : l'ansatz fait mieux si sa TVD est sous 0,9 × la meilleure, moins bien au-delà de 1,1 ×, et lui est équivalent entre les deux.
 
 ## Bruit simulé
 
@@ -173,7 +173,12 @@ Ces valeurs sont des **ordres de grandeur, pas des calibrations** de machines r�
 
 L'IA prédit la TVD finale après entraînement exact et la dégradation sous bruit, avec un intervalle 10-90 % calibré par CQR. Méthode, résultats de validation et limites : [`PREDICTION.md`](PREDICTION.md).
 
-Règles de décision de la recommandation (`api/stochastiq_api/ml/recommendation.py`) : les ansatz sont classés par TVD (sous bruit si un profil est choisi), mesurée si un entraînement existe dans le projet, prédite sinon. Un ansatz dont l'intervalle recoupe celui du premier lui est « indistinguable ». Le quantique « se justifie » si la borne haute du premier est sous la meilleure TVD classique, « ne se justifie pas » si sa borne basse est au-dessus ; sinon le verdict est « Indéterminé », avec les ansatz à entraîner pour trancher (budget // 200 au plus). Un ansatz sans intervalle fiable est traité comme compatible avec toutes les valeurs.
+Règles de décision de la recommandation (`api/stochastiq_api/ml/recommendation.py`) : les ansatz sont classés par TVD (sous bruit si un profil est choisi), mesurée si un entraînement existe dans le projet, prédite sinon. Le verdict dépend de la nature de la preuve du premier :
+- valeur mesurée : règle des 10 % (« se justifie » sous 0,9 × la meilleure TVD classique, « ne se justifie pas » au-delà de 1,1 ×, sinon « équivalent au classique ») ;
+- valeur prédite avec intervalle fiable : borne haute sous la TVD classique, ou borne basse au-dessus, sinon « Indéterminé » ;
+- valeur prédite sans intervalle fiable : marge de 2 × l'erreur moyenne de validation, verdicts « probablement », sinon « Indéterminé ».
+
+Un ansatz dont l'intervalle effectif (point, intervalle ou valeur ± marge) recoupe celui du premier lui est « indistinguable ». Pour « Indéterminé », les ansatz à entraîner sont les mieux classés, sans entraînement, dont l'intervalle effectif contient la TVD classique (budget // 200 au plus). Détails et motif : [`PREDICTION.md`](PREDICTION.md).
 
 ## Conventions des ansatz
 

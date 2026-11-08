@@ -7,6 +7,7 @@ Un client apporte sa distribution et ses ansatz, les entraîne en simulation, av
 ### Dérogations validées par l'auteur
 - **Périmètre** : l'entraînement de QCBM en simulation et le bruit simulé (qiskit-aer) entrent dans le périmètre.
 - **Dashboard Streamlit** : il n'est pas étendu. Les phrases de lecture des nouvelles fonctions (entraînement, bruit, recommandation) n'existent que dans l'application web.
+- **Verdict de la recommandation** (jalon 8) : une valeur mesurée n'est plus traitée comme un intervalle de largeur nulle. Règle des 10 % pour une valeur mesurée (sinon « Équivalent au classique (écart inférieur à 10 %) »), règle des bornes pour une prédiction avec intervalle, marge de 2 × l'erreur moyenne de validation pour une prédiction sans intervalle (verdicts « probablement »). Même règle des 10 % pour la phrase de l'écran Entraînement. Détails : `docs/PREDICTION.md`.
 - **Critère de l'IA de prédiction** (jalon 6) : le critère initial, qui mélangeait précision et intervalles, est séparé en deux. La valeur centrale du modèle est retenue si son gain sur la meilleure référence atteint 20 % ; l'intervalle est calibré par CQR et n'est affiché que si sa couverture mesurée, pour un cas comparable, est entre 70 % et 90 %. Résultats avant et après : `docs/PREDICTION.md`.
 
 ### Bibliothèque (`stochastiq` 0.2.0)
@@ -24,7 +25,8 @@ Un client apporte sa distribution et ses ansatz, les entraîne en simulation, av
 - Runs `training` (avec évaluation facultative sous bruit), `noise` et `recommendation` ; carte « Dégradation sous bruit » dans le diagnostic.
 - Base de résultats (`results`, migration 0005), alimentée par les runs réussis et par la grille de référence ; jamais de probabilités brutes. Partage des résultats d'un projet avec l'IA (`share_results`, faux par défaut, propriétaire).
 - IA de prédiction (`api/stochastiq_api/ml/`, scikit-learn et joblib) : TVD finale et dégradation sous bruit, quatre validations, intervalle CQR ; `POST /projects/{id}/predict` (409 sans modèle).
-- Recommandation : classement de 2 à 7 ansatz, entraînements existants prioritaires, références classiques, verdict quantique ou classique, ansatz à entraîner pour trancher.
+- Recommandation : classement de 2 à 7 ansatz, entraînements existants prioritaires, références classiques, verdict selon la nature de la preuve (mesure, intervalle ou marge), ansatz à entraîner pour trancher.
+- Processus de calcul créés par `spawn` sur toutes les plateformes (sous Linux, `fork` bloquait un routage Qiskit après une transpilation dans le processus de l'API).
 - Message de durée maximale construit à partir de `RUN_TIMEOUT_SECONDS` ; réglage `MODELS_DIR`.
 
 ### Application web (0.3.0)
