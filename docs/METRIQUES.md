@@ -107,6 +107,74 @@ Topologies (`list_topologies()`) :
 
 Le placement et le routage de Qiskit sont heuristiques : les résultats dépendent de la graine du transpileur. Aucune machine réelle n'est contactée.
 
+## Distributions cibles et caractéristiques d'un problème
+
+Un problème est une distribution sur 2^n chaînes de bits (n de 2 à 8), dans la convention little-endian de Qiskit : l'indice i a le qubit q au bit q, et une chaîne s'écrit qubit n−1 à gauche.
+
+Distributions de référence (`list_distributions()`, `reference_distribution(nom, n, seed)`) : `gaussian`, `bimodal`, `lognormal`, `uniform`, `bars_and_stripes` (n = 4 : grille 2×2, 6 motifs ; n = 6 : grille 2×3, 10 motifs) et `ising_boltzmann` (couplages J_ij ~ N(0, 1) tirés avec la graine, β = 1, spins s = 1 − 2·bit).
+
+Imports : `from_probabilities` (somme égale à 1 à 1e-6 près, sans renormalisation) et `from_samples` (n/d bits par variable, encodage binaire ou de Gray, valeurs hors intervalle refusées).
+
+Caractéristiques (`problem_features`) : `n_qubits` ; `entropy`, entropie de Shannon divisée par n (entre 0 et 1) ; `support_fraction`, part des états de probabilité non nulle ; `max_probability` ; `mean_mutual_information`, information mutuelle moyenne entre paires de bits, en bits.
+
+## Entraînement QCBM
+
+Fonction : `train_qcbm(ansatz, cible, loss, optimizer, max_iter, learning_rate, shots, seed)`. Le modèle est la distribution de mesure p(θ) de l'ansatz.
+
+Pertes :
+
+- `kl` : KL(t ‖ p) = Σ t log(t / (p + ε)), avec ε = 1e-12 ;
+- `mmd` : MMD² = (p − t)ᵀ K (p − t), noyau gaussien sur la distance de Hamming, mélange des bandes passantes σ² ∈ {0,25 ; 1 ; 4} (Liu et Wang, 2018) ;
+- `tvd` : ½ Σ |p − t|, non dérivable, donc permise seulement avec SPSA et COBYLA.
+
+Gradients exacts par la règle du décalage de paramètre appliquée aux probabilités, ∂p/∂θ_k = (p(θ + π/2·e_k) − p(θ − π/2·e_k)) / 2, puis règle de la chaîne.
+
+Optimiseurs :
+
+- `adam` : β1 = 0,9, β2 = 0,999 ;
+- `spsa` : gains a_k = lr / (k + 1 + A)^0,602 avec A = max_iter / 10, et c_k = 0,2 / (k + 1)^0,101 ;
+- `cobyla` : `scipy.optimize.minimize`, rayon initial égal au pas.
+
+Paramètres initiaux uniformes dans [0, 2π] (`default_rng(seed)`). Avec `shots`, les probabilités sont estimées par tirages pendant l'entraînement ; les métriques finales sont toujours calculées sur les probabilités exactes.
+
+Métriques finales (`distribution_metrics`) : KL(cible ‖ modèle), TVD et distance de Hellinger, sqrt(1 − Σ sqrt(p·t)), entre 0 et 1.
+
+## Références classiques
+
+`classical_baselines(cible)` donne deux modèles classiques simples, ajustés exactement :
+
+- **marginales indépendantes** : produit des lois de chaque bit (n paramètres) ;
+- **arbre de Chow-Liu** : arbre couvrant de poids maximal pour l'information mutuelle entre bits (algorithme de Prim depuis le qubit 0), puis lois conditionnelles le long de l'arbre (1 + 2(n − 1) paramètres).
+
+L'écran Entraînement compare l'ansatz à la meilleure des deux (TVD la plus basse) ; écart de moins de 1e-4 en TVD = égalité.
+
+## Bruit simulé
+
+Option `noise` (qiskit-aer). Le circuit est transpilé comme pour le coût matériel (portes cx, rz, sx et x, niveau 1, `seed_transpiler`), sur une ligne, un anneau ou une connectivité complète, puis simulé en matrice densité :
+
+- dépolarisation à 1 qubit de taux p1 sur sx et x (rz est supposée virtuelle, donc sans erreur) ;
+- dépolarisation à 2 qubits de taux p2 sur cx ;
+- erreur de lecture symétrique de taux p_lecture sur chaque qubit, appliquée aux probabilités.
+
+| Profil | p1 | p2 | Lecture |
+|---|---|---|---|
+| faible | 1e-4 | 5e-4 | 1e-3 |
+| moyen | 1e-3 | 5e-3 | 1e-2 |
+| fort | 1e-2 | 2e-2 | 5e-2 |
+
+Ces valeurs sont des **ordres de grandeur, pas des calibrations** de machines réelles. Un profil personnalisé `{p1, p2, readout}` (chaque taux entre 0 et 0,5) est accepté. L'hexagone lourd (19 qubits) est refusé : sa matrice densité, 2^19 × 2^19, n'est pas simulable ici. Les probabilités sont remises dans l'ordre logique des qubits grâce au placement final du transpileur.
+
+- `noisy_probabilities(ansatz, params, profil, topologie, seed)` : distribution bruitée pour des paramètres donnés.
+- `noisy_tvd(ansatz, profil, topologie, n_samples, seed)` : TVD moyenne entre sortie idéale et sortie bruitée, sur des paramètres tirés uniformément dans [0, 2π] (carte « Dégradation sous bruit » du diagnostic).
+- Évaluation sous bruit d'un entraînement : KL, TVD et Hellinger de la distribution bruitée obtenue avec les paramètres appris. La **dégradation** est la TVD bruitée moins la TVD exacte.
+- `gate_count_fidelity(comptes, profil, n)` : (1 − p1)^n1 · (1 − p2)^n2 · (1 − p_lecture)^n, n1 et n2 comptant les portes sx et x, et cx, du circuit transpilé (`transpiled_gate_counts`). C'est une référence grossière (erreurs indépendantes), utilisée par l'IA de prédiction.
+
+## Prédiction et recommandation
+
+L'IA prédit la TVD finale après entraînement exact et la dégradation sous bruit, avec un intervalle 10-90 % calibré par CQR. Méthode, résultats de validation et limites : [`PREDICTION.md`](PREDICTION.md).
+
+Règles de décision de la recommandation (`api/stochastiq_api/ml/recommendation.py`) : les ansatz sont classés par TVD (sous bruit si un profil est choisi), mesurée si un entraînement existe dans le projet, prédite sinon. Un ansatz dont l'intervalle recoupe celui du premier lui est « indistinguable ». Le quantique « se justifie » si la borne haute du premier est sous la meilleure TVD classique, « ne se justifie pas » si sa borne basse est au-dessus ; sinon le verdict est « Indéterminé », avec les ansatz à entraîner pour trancher (budget // 200 au plus). Un ansatz sans intervalle fiable est traité comme compatible avec toutes les valeurs.
+
 ## Conventions des ansatz
 
 Les 7 ansatz (`list_ansatz()`) sont définis d'après le rapport QCBM Lab, section 2.4. Leur définition complète figure dans la docstring de [`src/stochastiq/ansatz.py`](../src/stochastiq/ansatz.py) : rotations par couche, entangleurs, cas n = 1 et n = 2.
