@@ -13,6 +13,8 @@ import { TeamPage } from "./pages/TeamPage";
 // Écrans scientifiques chargés à la demande : ils embarquent les graphiques (Recharts).
 const ProblemsPage = lazy(() => import("./pages/ProblemsPage").then((m) => ({ default: m.ProblemsPage })));
 const CustomAnsatzPage = lazy(() => import("./pages/CustomAnsatzPage").then((m) => ({ default: m.CustomAnsatzPage })));
+const RecommendationPage = lazy(() => import("./pages/RecommendationPage").then((m) => ({ default: m.RecommendationPage })));
+const ReportPage = lazy(() => import("./pages/ReportPage").then((m) => ({ default: m.ReportPage })));
 const TrainingPage = lazy(() => import("./pages/TrainingPage").then((m) => ({ default: m.TrainingPage })));
 const DiagnosticPage = lazy(() => import("./pages/DiagnosticPage").then((m) => ({ default: m.DiagnosticPage })));
 const ComparePage = lazy(() => import("./pages/ComparePage").then((m) => ({ default: m.ComparePage })));
@@ -57,6 +59,8 @@ export function AppRoutes() {
           <Route path="ansatz" element={<Screen><AnsatzPage /></Screen>} />
           <Route path="mes-ansatz" element={<Screen><CustomAnsatzPage /></Screen>} />
           <Route path="entrainement" element={<Screen><TrainingPage /></Screen>} />
+          <Route path="recommandation" element={<Screen><RecommendationPage /></Screen>} />
+          <Route path="rapport" element={<Screen><ReportPage /></Screen>} />
           <Route path="plateau-sterile" element={<Screen><BarrenPage /></Screen>} />
           <Route path="jobs" element={<Screen><JobsPage /></Screen>} />
           <Route path="jobs/:runId" element={<Screen><RunDetailPage /></Screen>} />

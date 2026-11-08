@@ -430,3 +430,36 @@ th {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Rapport imprimable : seule la page du rapport est imprimée, sans navigation ni boutons. */
+@media print {
+  .sidebar,
+  .no-print {
+    display: none !important;
+  }
+
+  .app {
+    display: block;
+  }
+
+  main.content {
+    padding: 0;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .report .card {
+    box-shadow: none;
+    border: 1px solid #999999;
+    break-inside: avoid;
+  }
+
+  .report a {
+    color: #000000;
+    text-decoration: none;
+  }
+}
