@@ -19,14 +19,7 @@ from stochastiq_api.ml.predictor import (
 )
 from stochastiq_api.ml.service import NO_MODEL, feature_row
 
-GRID = Path(__file__).resolve().parents[2] / "data" / "results_grid.csv"
-
-
-@pytest.fixture(scope="module")
-def bundle():
-    # Sous-ensemble de la grille réelle (1 couche) : entraînement rapide, mêmes colonnes.
-    frame = pd.read_csv(GRID)
-    return train_predictor(frame[frame["layers"] == 1], "test")
+from conftest import GRID
 
 
 def test_marge_conforme():

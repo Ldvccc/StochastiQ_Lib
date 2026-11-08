@@ -63,9 +63,10 @@ def _kill(executor: ProcessPoolExecutor) -> None:
 class RunManager:
     """Ordonnanceur des runs : file d'attente, exécution, durée maximale, statut en base."""
 
-    def __init__(self, sessions: sessionmaker[Session], timeout_seconds: float):
+    def __init__(self, sessions: sessionmaker[Session], timeout_seconds: float, models_dir: str | None = None):
         self._sessions = sessions
         self._timeout = timeout_seconds
+        self._models_dir = models_dir
         self._dispatcher = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="run")
         self._active: set[ProcessPoolExecutor] = set()
         self._lock = threading.Lock()
@@ -111,7 +112,7 @@ class RunManager:
         with self._lock:
             self._active.add(executor)
         try:
-            result = executor.submit(execute, kind, params).result(timeout=self._timeout)
+            result = executor.submit(execute, kind, params, self._models_dir).result(timeout=self._timeout)
         except FutureTimeout:
             _kill(executor)
             message = f"Durée maximale dépassée ({format_duration(self._timeout)})."

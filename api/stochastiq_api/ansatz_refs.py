@@ -56,7 +56,7 @@ def resolve_problem(db: Session, project_id: int, params: dict) -> dict:
 def resolve_params(db: Session, project_id: int, kind: str, params: dict) -> dict:
     """Remplace les identifiants (problème, ansatz personnalisés) et vérifie que les ansatz sont constructibles."""
     params = dict(params)
-    if kind == "training":
+    if kind in ("training", "recommendation"):
         params = resolve_problem(db, project_id, params)
     single = not isinstance(params.get("ansatz"), list)
     refs = [params["ansatz"]] if single else params["ansatz"]
@@ -83,4 +83,9 @@ def resolve_params(db: Session, project_id: int, kind: str, params: dict) -> dic
                 )
             _check_buildable(custom, params["n_qubits"], params["layers"])
     params["ansatz"] = resolved[0] if single else resolved
+    if kind == "recommendation":
+        from .ml.recommendation import existing_trainings
+
+        # Entraînements déjà faits, recopiés : ils priment sur la prédiction et le run reste reproductible.
+        params["existing"] = existing_trainings(db, project_id, params)
     return params

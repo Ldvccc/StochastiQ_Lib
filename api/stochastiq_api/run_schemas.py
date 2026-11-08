@@ -20,7 +20,7 @@ Samples = Annotated[int, Field(ge=50, le=5000)]
 Seed = Annotated[int, Field(ge=0, le=1_000_000)]
 Observable = Literal["Z0", "Zmean", "Zall"]
 
-RunKind = Literal["diagnostic", "compare", "scaling", "hardware", "training", "noise"]
+RunKind = Literal["diagnostic", "compare", "scaling", "hardware", "training", "noise", "recommendation"]
 RunStatus = Literal["pending", "running", "done", "failed"]
 
 
@@ -149,6 +149,23 @@ class NoiseParams(Input):
     seed: Seed = 0
 
 
+class RecommendationParams(Input):
+    """Classement de 2 à 7 ansatz sur un problème du projet, et verdict quantique / classique."""
+
+    problem_id: Annotated[int, Field(ge=1)]
+    ansatz: Annotated[list[AnsatzRef], Field(min_length=2, max_length=7)]
+    layers: Layers
+    noise_profile: NoiseProfile | None = None
+    topology: NoiseTopology = "line"
+    # Budget d'itérations : budget // 200 entraînements au plus sont conseillés pour trancher.
+    budget: Annotated[int, Field(ge=200, le=7000)] = 400
+    # Échantillons du diagnostic léger de chaque ansatz.
+    n_samples: Samples = 200
+    seed: Seed = 0
+
+    _ansatz = field_validator("ansatz")(_unique)
+
+
 class DiagnosticRunIn(Input):
     kind: Literal["diagnostic"]
     params: DiagnosticParams
@@ -179,8 +196,13 @@ class NoiseRunIn(Input):
     params: NoiseParams
 
 
+class RecommendationRunIn(Input):
+    kind: Literal["recommendation"]
+    params: RecommendationParams
+
+
 RunIn = Annotated[
-    Union[DiagnosticRunIn, CompareRunIn, ScalingRunIn, HardwareRunIn, TrainingRunIn, NoiseRunIn],
+    Union[DiagnosticRunIn, CompareRunIn, ScalingRunIn, HardwareRunIn, TrainingRunIn, NoiseRunIn, RecommendationRunIn],
     Field(discriminator="kind"),
 ]
 
