@@ -39,6 +39,15 @@ def mark_orphans_failed(sessions: sessionmaker[Session]) -> int:
         return result.rowcount
 
 
+def format_duration(seconds: float) -> str:
+    """Durée en français : « 0,5 seconde », « 1 minute », « 10 minutes ».
+
+    Minutes à partir de 60 secondes ; pluriel à partir de 2 (règle française).
+    """
+    value, unit = (seconds / 60, "minute") if seconds >= 60 else (seconds, "seconde")
+    return f"{value:g}".replace(".", ",") + f" {unit}" + ("s" if value >= 2 else "")
+
+
 def _kill(executor: ProcessPoolExecutor) -> None:
     """Termine les processus d'un exécuteur (API publique en Python 3.14, attribut privé avant)."""
     terminate = getattr(executor, "terminate_workers", None)
@@ -92,9 +101,8 @@ class RunManager:
             result = executor.submit(execute, kind, params).result(timeout=self._timeout)
         except FutureTimeout:
             _kill(executor)
-            minutes = self._timeout / 60
-            duration = f"{minutes:g} minutes" if minutes >= 1 else f"{self._timeout:g} secondes"
-            self._finish(run_id, "failed", None, f"Durée maximale dépassée ({duration}).")
+            message = f"Durée maximale dépassée ({format_duration(self._timeout)})."
+            self._finish(run_id, "failed", None, message)
         except Exception as error:  # échec du calcul : message court, sans trace
             logger.warning("Run %s en échec : %s", run_id, type(error).__name__)
             self._finish(run_id, "failed", None, f"{type(error).__name__} : {error}")
