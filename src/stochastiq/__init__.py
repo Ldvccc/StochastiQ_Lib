@@ -1,5 +1,6 @@
 from .ansatz import ansatz_structure, build_ansatz, list_ansatz
 from .compare import compare, pareto_front
+from .custom_ansatz import build_from_spec, circuit_structure, load_qasm, spec_qubits, validate_ansatz, validate_spec
 from .distributions import (
     bars_and_stripes,
     bimodal,
@@ -46,5 +47,11 @@ __all__ = [
     "from_samples",
     "from_probabilities",
     "problem_features",
+    "build_from_spec",
+    "validate_spec",
+    "spec_qubits",
+    "load_qasm",
+    "validate_ansatz",
+    "circuit_structure",
 ]
 __version__ = "0.1.0"
