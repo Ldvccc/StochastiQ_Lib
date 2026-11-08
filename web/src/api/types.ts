@@ -82,7 +82,7 @@ export interface Page<T> {
   total: number;
 }
 
-export type RunKind = "diagnostic" | "compare" | "scaling" | "hardware";
+export type RunKind = "diagnostic" | "compare" | "scaling" | "hardware" | "training";
 export type RunStatus = "pending" | "running" | "done" | "failed";
 
 export interface RunSummary {

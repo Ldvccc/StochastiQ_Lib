@@ -167,6 +167,36 @@ export function ParetoScatter({ rows, width }: { rows: CompareRow[]; width?: num
   );
 }
 
+// ---- Courbe de perte (échelle log) ----
+
+export function LossChart({ history, width }: { history: number[]; width?: number }) {
+  // L'échelle log n'affiche que les valeurs strictement positives (une KL peut atteindre 0 à la convergence).
+  const data = history.map((loss, i) => ({ iteration: i + 1, loss })).filter((d) => d.loss > 0);
+  const values = data.map((d) => d.loss);
+  const ticks = values.length > 0 ? logTicks(Math.min(...values), Math.max(...values)) : [0.01, 0.1];
+  const domain: [number, number] = values.length
+    ? [Math.min(ticks[0], ...values) / 1.15, Math.max(ticks[ticks.length - 1], ...values) * 1.15]
+    : [0.01, 0.1];
+  return (
+    <Frame width={width} height={300}>
+      <LineChart data={data} width={width} height={300} margin={{ top: 10, right: 20, bottom: 24, left: 10 }}>
+        <CartesianGrid vertical={false} stroke={COLORS.line} />
+        <XAxis
+          dataKey="iteration"
+          type="number"
+          domain={[1, Math.max(1, history.length)]}
+          allowDecimals={false}
+          tick={AXIS}
+          label={{ value: "Itération", position: "insideBottom", offset: -12, fill: COLORS.inkMuted }}
+        />
+        <YAxis scale="log" domain={domain} ticks={ticks} allowDataOverflow tickFormatter={logTickLabel} tick={AXIS} width={64} />
+        <Tooltip formatter={(value: number) => formatMetric(value)} labelFormatter={(i: number) => `Itération ${i}`} />
+        <Line dataKey="loss" name="Perte" stroke={COLORS.violet} strokeWidth={1.8} dot={false} isAnimationActive={false} />
+      </LineChart>
+    </Frame>
+  );
+}
+
 // ---- Variance du gradient en fonction du nombre de qubits (échelle log) ----
 
 export type Dash = "solid" | "dashed" | "dashdot";

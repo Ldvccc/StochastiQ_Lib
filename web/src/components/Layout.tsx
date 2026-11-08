@@ -11,6 +11,7 @@ const PROJECT_NAV = [
   { to: "comparateur", label: "Comparateur" },
   { to: "ansatz", label: "Ansatz" },
   { to: "mes-ansatz", label: "Mes ansatz" },
+  { to: "entrainement", label: "Entraînement" },
   { to: "plateau-sterile", label: "Plateau stérile" },
   { to: "jobs", label: "Jobs et matériel" },
   { to: "equipe", label: "Équipe" },

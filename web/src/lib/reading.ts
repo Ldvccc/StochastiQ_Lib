@@ -156,6 +156,59 @@ export function observablesSentence(name: string, local: Fit, global: Fit): stri
   return `${sentence} Pas de décroissance exponentielle nette sur cette plage, ni en local ni en global.`;
 }
 
+// ---- Entraînement (règle propre au web) ----
+
+export interface DistributionMetrics {
+  kl: number;
+  tvd: number;
+  hellinger: number;
+}
+
+export interface TrainingResult {
+  history: number[];
+  metrics: DistributionMetrics;
+  n_parameters: number;
+  n_iterations: number;
+  loss: string;
+  optimizer: string;
+  probabilities: number[];
+  baselines: Record<"independent" | "chow_liu", { probabilities: number[]; metrics: DistributionMetrics; n_parameters: number }>;
+}
+
+export const BASELINE_LABELS: Record<string, string> = {
+  independent: "marginales indépendantes",
+  chow_liu: "arbre de Chow-Liu",
+};
+
+export const LOSS_LABELS: Record<string, string> = { kl: "KL", mmd: "MMD", tvd: "TVD" };
+export const OPTIMIZER_LABELS: Record<string, string> = { adam: "Adam", spsa: "SPSA", cobyla: "COBYLA" };
+
+// Écart de TVD en dessous duquel l'ansatz et la référence sont dits à égalité.
+export const TVD_TIE = 1e-4;
+
+/**
+ * Phrase factuelle : TVD atteinte par l'ansatz et comparaison avec la meilleure
+ * référence classique (TVD la plus basse), avec les nombres de paramètres.
+ */
+export function trainingSentence(result: TrainingResult, shots: number | null): string {
+  const tvd = result.metrics.tvd;
+  const [bestName, best] = Object.entries(result.baselines).sort(([, a], [, b]) => a.metrics.tvd - b.metrics.tvd)[0];
+  const bestLabel = BASELINE_LABELS[bestName];
+  const opening = `Après ${result.n_iterations} itérations (perte ${LOSS_LABELS[result.loss]}, ${OPTIMIZER_LABELS[result.optimizer]}), l'ansatz atteint une TVD de ${formatMetric(tvd)} avec ${result.n_parameters} paramètres.`;
+  let comparison: string;
+  if (Math.abs(tvd - best.metrics.tvd) <= TVD_TIE) {
+    comparison = `La meilleure référence classique (${bestLabel}, ${best.n_parameters} paramètres) atteint la même TVD à 0,0001 près.`;
+  } else if (tvd < best.metrics.tvd) {
+    comparison = `Il fait mieux que les deux références classiques ; la meilleure (${bestLabel}, ${best.n_parameters} paramètres) atteint ${formatMetric(best.metrics.tvd)}.`;
+  } else {
+    comparison = `La référence classique « ${bestLabel} » fait mieux : TVD de ${formatMetric(best.metrics.tvd)} avec ${best.n_parameters} paramètres.`;
+  }
+  const scope = shots
+    ? `Une seule initialisation, entraînée avec ${shots} tirages par évaluation ; TVD calculée sur les probabilités exactes.`
+    : "Une seule initialisation, en simulation exacte sans bruit.";
+  return `${opening} ${comparison} ${scope}`;
+}
+
 // ---- Axe logarithmique ----
 
 /**
