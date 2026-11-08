@@ -35,6 +35,7 @@ def _fields(project: Project) -> dict:
         "name": project.name,
         "slug": project.slug,
         "description": project.description,
+        "share_results": project.share_results,
         "created_by": project.created_by,
         "created_at": project.created_at,
     }
@@ -100,6 +101,8 @@ def update_project(
         project.name = data.name
     if data.description is not None:
         project.description = data.description
+    if data.share_results is not None:
+        project.share_results = data.share_results
     db.commit()
     return ProjectOut(**_fields(project), role=access.membership.role)
 

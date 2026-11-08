@@ -33,7 +33,11 @@ PERMISSIONS: list[dict[str, str]] = [
         "label": "Gérer les machines (fournisseur et libellé, sans clé)",
         "min_role": "key_manager",
     },
-    {"action": "edit_project", "label": "Modifier le nom et la description du projet", "min_role": "owner"},
+    {
+        "action": "edit_project",
+        "label": "Modifier le nom et la description du projet, partager ses résultats avec l'IA",
+        "min_role": "owner",
+    },
     {"action": "invite", "label": "Inviter des membres et révoquer des invitations", "min_role": "owner"},
     {
         "action": "manage_members",

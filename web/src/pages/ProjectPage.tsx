@@ -161,6 +161,49 @@ function MembersTab({ projectId }: { projectId: number }) {
   );
 }
 
+/** Partage des résultats du projet avec l'IA de prédiction (désactivé par défaut, propriétaire seulement). */
+export function ShareResultsCard() {
+  const { project, can, reason, reload } = useProject();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const allowed = can("edit_project");
+
+  async function toggle(value: boolean) {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.patch(`/projects/${project.id}`, { share_results: value });
+      reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="card" aria-labelledby="partage-resultats">
+      <h2 id="partage-resultats">Partage des résultats avec l'IA</h2>
+      <p className="muted">
+        Activé, ce partage ajoute aux données d'entraînement de l'IA de prédiction les caractéristiques des circuits et des problèmes, et les grandeurs mesurées
+        par les runs réussis de ce projet. Les distributions de vos problèmes ne sont jamais enregistrées dans la base de résultats. Désactivé par défaut.
+      </p>
+      <label style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }}>
+        <input
+          type="checkbox"
+          checked={project.share_results}
+          disabled={!allowed || saving}
+          onChange={(e) => toggle(e.target.checked)}
+          style={{ minHeight: 0, width: 20, height: 20 }}
+        />
+        Partager les résultats de ce projet avec l'IA
+      </label>
+      {!allowed && <p className="muted">{reason("edit_project")}</p>}
+      {error && <ErrorState message={error} />}
+    </section>
+  );
+}
+
 export function ProjectPage() {
   const { project } = useProject();
   const [tab, setTab] = useState<Tab>("Activité");
@@ -192,6 +235,7 @@ export function ProjectPage() {
           {tab === "Membres" && <MembersTab projectId={project.id} />}
         </div>
       </div>
+      <ShareResultsCard />
     </>
   );
 }

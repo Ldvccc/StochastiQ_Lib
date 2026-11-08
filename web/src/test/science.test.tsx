@@ -104,7 +104,7 @@ describe("formulaire de diagnostic", () => {
         ),
       ),
     );
-    const project: Project = { id: 1, name: "P", slug: "p", description: "", created_by: 1, created_at: "", role };
+    const project: Project = { id: 1, name: "P", slug: "p", description: "", share_results: false, created_by: 1, created_at: "", role };
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProjectContextProvider

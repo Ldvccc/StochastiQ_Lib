@@ -1,5 +1,7 @@
 from qiskit import QuantumCircuit, transpile
 
+from .noise import transpiled_gate_counts
+
 _BASIS_GATES = ["ry", "rz", "rx", "cx", "h"]
 
 
@@ -34,4 +36,27 @@ def circuit_stats(ansatz: QuantumCircuit) -> dict:
         "depth": qc.depth(),
         "n_two_qubit_gates": n_two_qubit_gates,
         "gate_counts": gate_counts,
+    }
+
+
+def circuit_features(ansatz: QuantumCircuit) -> dict:
+    """Caractéristiques numériques d'un circuit, pour la base de résultats et la prédiction.
+
+    ``n_qubits``, ``n_parameters``, ``depth``, ``n_two_qubit_gates`` et
+    ``n_one_qubit_gates`` (portes de ``circuit_stats``), puis ``line_n1``,
+    ``line_n2`` et ``line_depth`` : le circuit transpilé sur une ligne comme
+    pour le bruit (``transpiled_gate_counts``, graine 0).
+    """
+    stats = circuit_stats(ansatz)
+    line = transpiled_gate_counts(ansatz, "line", seed=0)
+    n_gates = sum(stats["gate_counts"].values())
+    return {
+        "n_qubits": stats["n_qubits"],
+        "n_parameters": stats["n_parameters"],
+        "depth": stats["depth"],
+        "n_two_qubit_gates": stats["n_two_qubit_gates"],
+        "n_one_qubit_gates": n_gates - stats["n_two_qubit_gates"],
+        "line_n1": line["n1"],
+        "line_n2": line["n2"],
+        "line_depth": line["depth"],
     }

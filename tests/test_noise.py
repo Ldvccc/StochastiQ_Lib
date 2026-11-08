@@ -5,7 +5,15 @@ pytest.importorskip("qiskit_aer")
 
 from stochastiq import build_ansatz  # noqa: E402
 from stochastiq.gradients import batched_probabilities  # noqa: E402
-from stochastiq.noise import PROFILES, noisy_probabilities, noisy_tvd, resolve_profile  # noqa: E402
+from stochastiq.noise import (  # noqa: E402
+    PROFILES,
+    gate_count_fidelity,
+    noisy_probabilities,
+    noisy_tvd,
+    resolve_profile,
+    transpiled_gate_counts,
+)
+from stochastiq.stats import circuit_features  # noqa: E402
 
 NO_NOISE = {"p1": 0.0, "p2": 0.0, "readout": 0.0}
 
@@ -66,3 +74,25 @@ def test_hexagone_lourd_refuse():
         noisy_probabilities(qc, np.zeros(qc.num_parameters), "moyen", "heavy_hex")
     with pytest.raises(ValueError, match="Topologie inconnue"):
         noisy_probabilities(qc, np.zeros(qc.num_parameters), "moyen", "etoile")
+
+
+def test_comptes_de_portes_et_fidelite():
+    qc = build_ansatz("hardware_efficient", 3, 1)
+    counts = transpiled_gate_counts(qc, "line")
+    assert counts["n2"] >= 2 and counts["n1"] > 0
+    assert gate_count_fidelity(counts, NO_NOISE, 3) == 1
+    expected = (1 - 1e-2) ** counts["n1"] * (1 - 2e-2) ** counts["n2"] * (1 - 5e-2) ** 3
+    assert gate_count_fidelity(counts, "fort", 3) == pytest.approx(expected)
+    # Une ligne demande au moins autant de cx qu'une connectivité complète.
+    ring = build_ansatz("strongly_entangling", 5, 2)
+    assert transpiled_gate_counts(ring, "line")["n2"] >= transpiled_gate_counts(ring, "full")["n2"]
+
+
+def test_caracteristiques_du_circuit():
+    features = circuit_features(build_ansatz("hardware_efficient", 4, 2))
+    assert features["n_qubits"] == 4
+    assert features["n_parameters"] == 16
+    assert set(features) == {
+        "n_qubits", "n_parameters", "depth", "n_two_qubit_gates", "n_one_qubit_gates", "line_n1", "line_n2", "line_depth",
+    }
+    assert all(isinstance(value, int) for value in features.values())
