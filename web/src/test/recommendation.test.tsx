@@ -10,18 +10,29 @@ import { can, DEFAULT_PERMISSIONS, deniedReason } from "../lib/roles";
 import { intervalText, RankingTable, recommendationErrors, type RecommendationForm } from "../pages/RecommendationPage";
 import { ReportPage } from "../pages/ReportPage";
 
-function item(key: string, value: number, low: number | null, high: number | null, source: RecommendationItem["source"] = "model"): RecommendationItem {
-  const prediction = { value, low, high, source: "model" as const, interval_reliable: low !== null, interval_message: null, validation_label: "", coverage: 0.8 };
+function item(
+  key: string,
+  value: number,
+  low: number | null,
+  high: number | null,
+  source: RecommendationItem["source"] = "model",
+  margin: number | null = null,
+  nParameters = 8,
+): RecommendationItem {
+  const prediction = { value, low, high, source: "model" as const, interval_reliable: low !== null, interval_message: null, validation_label: "", coverage: 0.8, mae: 0.05 };
+  const evidence: RecommendationItem["evidence"] = source === "measured" ? "measured" : low !== null ? "interval" : "margin";
   return {
     key,
     ref: key,
-    diagnostic: { expressibility: 0.1, entangling_capability: 0.5, gradient_mean_variance: 0.01, n_parameters: 8, n_two_qubit_gates: 3 },
+    diagnostic: { expressibility: 0.1, entangling_capability: 0.5, gradient_mean_variance: 0.01, n_parameters: nParameters, n_two_qubit_gates: 3 },
     prediction: { final_tvd: prediction, degradation: null, noisy_tvd: null },
     measured: source === "measured" ? { run_id: 7, tvd: value, noisy_tvd: null } : null,
     value,
     low,
     high,
     source,
+    evidence,
+    margin,
     interval_message: null,
   };
 }
@@ -35,7 +46,16 @@ function result(items: RecommendationItem[], decision: Partial<RecommendationRes
     budget: 400,
     classical: { best: "chow_liu", best_tvd: 0.1, baselines: { independent: { tvd: 0.3, n_parameters: 4 }, chow_liu: { tvd: 0.1, n_parameters: 7 } } },
     items,
-    decision: { ranking: items.map((i) => i.key), best: items[0].key, indistinguishable: [], verdict: "undetermined", to_train: [], n_trainings: 2, ...decision },
+    decision: {
+      ranking: items.map((i) => i.key),
+      best: items[0].key,
+      evidence: items[0].evidence,
+      indistinguishable: [],
+      verdict: "undetermined",
+      to_train: [],
+      n_trainings: 2,
+      ...decision,
+    },
   };
 }
 
@@ -63,6 +83,42 @@ describe("recommandation", () => {
       "« HardwareEfficient » et « BrickWall » sont indistinguables : leurs intervalles se recouvrent.",
       "Le quantique ne se justifie pas : la borne basse de « HardwareEfficient » (TVD sous bruit 0,2000) est au-dessus de la meilleure TVD classique (0,1000, arbre de Chow-Liu).",
     ]);
+  });
+
+  it("cas réel : valeur mesurée équivalente au classique (0,0585 contre 0,0588)", () => {
+    const r = result([item("hardware_efficient", 0.0585, null, null, "measured", null, 16), item("rotation_only", 0.3, 0.25, 0.35)], {
+      verdict: "equivalent",
+    });
+    r.classical = { best: "chow_liu", best_tvd: 0.0588, baselines: { independent: { tvd: 0.3, n_parameters: 4 }, chow_liu: { tvd: 0.0588, n_parameters: 7 } } };
+    const sentences = recommendationSentences(r);
+    expect(sentences).toEqual([
+      "Équivalent au classique (écart inférieur à 10 %) : le quantique n'apporte rien sur ce problème. « HardwareEfficient » atteint une TVD mesurée de 0,0585 avec 16 paramètres, la meilleure référence classique (arbre de Chow-Liu) 0,0588 avec 7 paramètres.",
+    ]);
+    expect(sentences.join(" ")).not.toContain("borne");
+  });
+
+  it("valeur mesurée : justifié et non justifié, sans parler de borne", () => {
+    const justified = result([item("hardware_efficient", 0.05, null, null, "measured", null, 16), item("rotation_only", 0.3, 0.25, 0.35)], { verdict: "justified" });
+    expect(recommendationSentences(justified)).toEqual([
+      "Le quantique se justifie sur ce problème : « HardwareEfficient » atteint une TVD mesurée de 0,0500, plus de 10 % sous la meilleure TVD classique (0,1000, arbre de Chow-Liu ; 16 paramètres pour l'ansatz, 7 pour la référence).",
+    ]);
+    const not = result([item("hardware_efficient", 0.2, null, null, "measured", null, 16), item("rotation_only", 0.3, 0.25, 0.35)], { verdict: "not_justified" });
+    expect(recommendationSentences(not)[0]).toBe(
+      "Le quantique ne se justifie pas : « HardwareEfficient » atteint une TVD mesurée de 0,2000, plus de 10 % au-dessus de la meilleure TVD classique (0,1000, arbre de Chow-Liu ; 16 paramètres pour l'ansatz, 7 pour la référence).",
+    );
+  });
+
+  it("valeur prédite sans intervalle : verdicts probables avec la marge", () => {
+    const probable = result([item("hardware_efficient", 0.05, null, null, "model", 0.03), item("rotation_only", 0.3, 0.25, 0.35)], { verdict: "probably_justified" });
+    expect(recommendationSentences(probable)).toEqual([
+      "Le quantique se justifie probablement sur ce problème : la TVD prédite de « HardwareEfficient » (0,0500), même augmentée de deux fois l'erreur moyenne de validation (0,0300), reste sous la meilleure TVD classique (0,1000, arbre de Chow-Liu).",
+    ]);
+    const improbable = result([item("hardware_efficient", 0.2, null, null, "model", 0.04), item("rotation_only", 0.3, null, null, "model", 0.04)], {
+      verdict: "probably_not_justified",
+    });
+    expect(recommendationSentences(improbable)[0]).toBe(
+      "Le quantique ne se justifie probablement pas : la TVD prédite de « HardwareEfficient » (0,2000), même diminuée de deux fois l'erreur moyenne de validation (0,0400), reste au-dessus de la meilleure TVD classique (0,1000, arbre de Chow-Liu).",
+    );
   });
 
   it("indéterminé : ansatz à entraîner", () => {
@@ -101,8 +157,8 @@ describe("écran et rapport de recommandation", () => {
   it("intervalle : bornes, mesure ou message", () => {
     expect(intervalText(item("a", 0.1, 0.05, 0.2))).toBe("[0,0500 ; 0,2000]");
     expect(intervalText(item("a", 0.1, 0.1, 0.1, "measured"))).toBe("mesure, sans intervalle");
-    expect(intervalText({ ...item("a", 0.1, null, null), interval_message: "Intervalle non fiable pour ce cas : couverture mesurée 52,4 %." })).toBe(
-      "Intervalle non fiable pour ce cas : couverture mesurée 52,4 %.",
+    expect(intervalText({ ...item("a", 0.1, null, null, "model", 0.06), interval_message: "Intervalle non fiable pour ce cas : couverture mesurée 52,4 %." })).toBe(
+      "Intervalle non fiable pour ce cas : couverture mesurée 52,4 %. Marge retenue : ± 0,0600 (deux fois l'erreur moyenne de validation).",
     );
   });
 

@@ -88,8 +88,12 @@ export function ReportPage() {
         </p>
         <p>
           Un intervalle 10-90 % n'est affiché que si sa couverture mesurée en validation, pour un cas comparable, est entre 70 % et 90 %
-          {coverage.length > 0 ? ` (couvertures des cas de ce rapport : ${[...new Set(coverage.map(formatPercent))].join(", ")})` : ""}. Sans intervalle, un ansatz ne
-          permet pas de trancher : il est traité comme compatible avec toutes les valeurs.
+          {coverage.length > 0 ? ` (couvertures des cas de ce rapport : ${[...new Set(coverage.map(formatPercent))].join(", ")})` : ""}. Sans intervalle fiable, la
+          prédiction est entourée d'une marge de deux fois son erreur moyenne de validation, et le verdict n'est que « probable ».
+        </p>
+        <p>
+          Une TVD mesurée (une seule initialisation) n'a pas d'intervalle : elle n'est jugée meilleure ou moins bonne que la référence classique que si l'écart dépasse
+          10 % ; sinon, elle lui est équivalente.
         </p>
         <p>Une seule initialisation par entraînement ; simulation, sans machine réelle. Le détail de la validation est décrit dans docs/PREDICTION.md.</p>
       </section>

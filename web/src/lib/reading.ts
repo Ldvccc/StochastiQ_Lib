@@ -184,12 +184,13 @@ export const BASELINE_LABELS: Record<string, string> = {
 export const LOSS_LABELS: Record<string, string> = { kl: "KL", mmd: "MMD", tvd: "TVD" };
 export const OPTIMIZER_LABELS: Record<string, string> = { adam: "Adam", spsa: "SPSA", cobyla: "COBYLA" };
 
-// Écart de TVD en dessous duquel l'ansatz et la référence sont dits à égalité.
-export const TVD_TIE = 1e-4;
+// Écart relatif sous lequel une TVD mesurée est jugée équivalente à la meilleure TVD classique (règle des 10 %).
+export const RELATIVE_MARGIN = 0.1;
 
 /**
  * Phrase factuelle : TVD atteinte par l'ansatz et comparaison avec la meilleure
  * référence classique (TVD la plus basse), avec les nombres de paramètres.
+ * Règle des 10 % : mieux si TVD < 0,9 × référence, moins bien si > 1,1 ×, sinon équivalent.
  */
 export function trainingSentence(result: TrainingResult, shots: number | null): string {
   const tvd = result.metrics.tvd;
@@ -197,12 +198,12 @@ export function trainingSentence(result: TrainingResult, shots: number | null): 
   const bestLabel = BASELINE_LABELS[bestName];
   const opening = `Après ${result.n_iterations} itérations (perte ${LOSS_LABELS[result.loss]}, ${OPTIMIZER_LABELS[result.optimizer]}), l'ansatz atteint une TVD de ${formatMetric(tvd)} avec ${result.n_parameters} paramètres.`;
   let comparison: string;
-  if (Math.abs(tvd - best.metrics.tvd) <= TVD_TIE) {
-    comparison = `La meilleure référence classique (${bestLabel}, ${best.n_parameters} paramètres) atteint la même TVD à 0,0001 près.`;
-  } else if (tvd < best.metrics.tvd) {
-    comparison = `Il fait mieux que les deux références classiques ; la meilleure (${bestLabel}, ${best.n_parameters} paramètres) atteint ${formatMetric(best.metrics.tvd)}.`;
-  } else {
+  if (tvd < (1 - RELATIVE_MARGIN) * best.metrics.tvd) {
+    comparison = `Il fait mieux que les deux références classiques, de plus de 10 % ; la meilleure (${bestLabel}, ${best.n_parameters} paramètres) atteint ${formatMetric(best.metrics.tvd)}.`;
+  } else if (tvd > (1 + RELATIVE_MARGIN) * best.metrics.tvd) {
     comparison = `La référence classique « ${bestLabel} » fait mieux : TVD de ${formatMetric(best.metrics.tvd)} avec ${best.n_parameters} paramètres.`;
+  } else {
+    comparison = `Équivalent à la meilleure référence classique (écart inférieur à 10 %) : « ${bestLabel} » atteint ${formatMetric(best.metrics.tvd)} avec ${best.n_parameters} paramètres, contre ${result.n_parameters} pour l'ansatz.`;
   }
   const scope = shots
     ? `Une seule initialisation, entraînée avec ${shots} tirages par évaluation ; TVD calculée sur les probabilités exactes.`
@@ -316,6 +317,7 @@ export interface PredictionValue {
   interval_message: string | null;
   validation_label: string;
   coverage: number;
+  mae: number;
 }
 
 export interface RecommendationItem {
@@ -328,6 +330,8 @@ export interface RecommendationItem {
   low: number | null;
   high: number | null;
   source: "measured" | "measured_degradation_predicted" | "model" | "reference";
+  evidence: "measured" | "interval" | "margin";
+  margin: number | null;
   interval_message: string | null;
 }
 
@@ -339,7 +343,15 @@ export interface RecommendationResult {
   budget: number;
   classical: { best: "independent" | "chow_liu"; best_tvd: number; baselines: Record<"independent" | "chow_liu", { tvd: number; n_parameters: number }> };
   items: RecommendationItem[];
-  decision: { ranking: string[]; best: string; indistinguishable: string[]; verdict: "justified" | "not_justified" | "undetermined"; to_train: string[]; n_trainings: number };
+  decision: {
+    ranking: string[];
+    best: string;
+    evidence: RecommendationItem["evidence"];
+    indistinguishable: string[];
+    verdict: "justified" | "not_justified" | "equivalent" | "probably_justified" | "probably_not_justified" | "undetermined";
+    to_train: string[];
+    n_trainings: number;
+  };
 }
 
 /** Liste française entre guillemets : « A », « A » et « B », « A », « B » et « C ». */
@@ -353,31 +365,63 @@ export function itemLabel(item: RecommendationItem): string {
   return refLabel(item.ref);
 }
 
-/** Phrases de la recommandation : indistinguables, puis verdict quantique / classique (règles calculées par l'API). */
+/**
+ * Phrases de la recommandation : indistinguables, puis verdict quantique / classique (règles calculées par l'API).
+ * Une valeur mesurée n'a pas de « borne » : elle suit la règle des 10 % ; une prédiction sans intervalle
+ * fiable suit une marge de deux fois l'erreur moyenne de validation (verdicts « probablement »).
+ */
 export function recommendationSentences(result: RecommendationResult): string[] {
   const byKey = new Map(result.items.map((item) => [item.key, item]));
   const label = (key: string) => itemLabel(byKey.get(key)!);
   const { decision, classical } = result;
   const best = byKey.get(decision.best)!;
+  const name = `« ${label(decision.best)} »`;
   const quantity = result.noise_profile ? "TVD sous bruit" : "TVD";
+  const classicalParams = classical.baselines[classical.best].n_parameters;
   const classicalText = `${formatMetric(classical.best_tvd)}, ${BASELINE_LABELS[classical.best]}`;
   const sentences: string[] = [];
   if (decision.indistinguishable.length > 0) {
     const names = [decision.best, ...decision.indistinguishable].map(label);
     sentences.push(`${quotedList(names)} sont indistinguables : leurs intervalles se recouvrent.`);
   }
-  if (decision.verdict === "justified") {
-    sentences.push(
-      `Le quantique se justifie sur ce problème : la borne haute de « ${label(decision.best)} » (${quantity} ${formatMetric(best.high)}) est sous la meilleure TVD classique (${classicalText}).`,
-    );
-  } else if (decision.verdict === "not_justified") {
-    sentences.push(
-      `Le quantique ne se justifie pas : la borne basse de « ${label(decision.best)} » (${quantity} ${formatMetric(best.low)}) est au-dessus de la meilleure TVD classique (${classicalText}).`,
-    );
-  } else if (decision.to_train.length > 0) {
-    sentences.push(`Indéterminé : entraînez ${quotedList(decision.to_train.map(label))} pour trancher.`);
-  } else {
-    sentences.push("Indéterminé : aucun entraînement supplémentaire ne permet de trancher.");
+  const params = `${best.diagnostic.n_parameters} paramètres pour l'ansatz, ${classicalParams} pour la référence`;
+  const margin = best.margin ?? 0;
+  switch (decision.verdict) {
+    case "justified":
+      sentences.push(
+        decision.evidence === "measured"
+          ? `Le quantique se justifie sur ce problème : ${name} atteint une ${quantity} mesurée de ${formatMetric(best.value)}, plus de 10 % sous la meilleure TVD classique (${classicalText} ; ${params}).`
+          : `Le quantique se justifie sur ce problème : la borne haute de ${name} (${quantity} ${formatMetric(best.high)}) est sous la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    case "not_justified":
+      sentences.push(
+        decision.evidence === "measured"
+          ? `Le quantique ne se justifie pas : ${name} atteint une ${quantity} mesurée de ${formatMetric(best.value)}, plus de 10 % au-dessus de la meilleure TVD classique (${classicalText} ; ${params}).`
+          : `Le quantique ne se justifie pas : la borne basse de ${name} (${quantity} ${formatMetric(best.low)}) est au-dessus de la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    case "equivalent":
+      sentences.push(
+        `Équivalent au classique (écart inférieur à 10 %) : le quantique n'apporte rien sur ce problème. ${name} atteint une ${quantity} mesurée de ${formatMetric(best.value)} avec ${best.diagnostic.n_parameters} paramètres, la meilleure référence classique (${BASELINE_LABELS[classical.best]}) ${formatMetric(classical.best_tvd)} avec ${classicalParams} paramètres.`,
+      );
+      break;
+    case "probably_justified":
+      sentences.push(
+        `Le quantique se justifie probablement sur ce problème : la ${quantity} prédite de ${name} (${formatMetric(best.value)}), même augmentée de deux fois l'erreur moyenne de validation (${formatMetric(margin)}), reste sous la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    case "probably_not_justified":
+      sentences.push(
+        `Le quantique ne se justifie probablement pas : la ${quantity} prédite de ${name} (${formatMetric(best.value)}), même diminuée de deux fois l'erreur moyenne de validation (${formatMetric(margin)}), reste au-dessus de la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    default:
+      sentences.push(
+        decision.to_train.length > 0
+          ? `Indéterminé : entraînez ${quotedList(decision.to_train.map(label))} pour trancher.`
+          : "Indéterminé : aucun entraînement supplémentaire ne permet de trancher.",
+      );
   }
   return sentences;
 }
