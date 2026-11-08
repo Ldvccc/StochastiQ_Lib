@@ -111,7 +111,7 @@ Ce document décrit ma lecture de la mission v0.3, jalon par jalon, avec les fic
 
 ## Jalon 8 : intégration et release (`feature/m14-release`)
 
-- Script de démo enrichi.
+- Script de démo enrichi. `seed_demo.py` (ou l'entrée du conteneur de l'API) entraîne le modèle de prédiction s'il est absent de `MODELS_DIR`, pour que `/predict` fonctionne dès une installation neuve ; à documenter (README, PREDICTION.md).
 - Documentation : README, API, ROLES, METRIQUES, ARCHITECTURE, CHANGELOG 0.3.0 (avec la dérogation sur le dashboard et celle sur le critère de l'IA, validée par l'auteur au jalon 6 : critère séparé entre valeur centrale et intervalle, calibrage conforme des quantiles ; voir docs/PREDICTION.md) et les deux rapports à jour.
 - Versions.
 - `docker compose up --build` vérifié pour de vrai, modèle présent dans le volume.
@@ -126,3 +126,27 @@ Facultatif : **je ne le commence pas sans accord explicite de l'auteur**.
 - **Durée des calculs** : le jalon 5 et la validation du jalon 6. La règle des 2 heures s'applique.
 - **Durée de la suite** : la suite de la bibliothèque dure déjà environ 2 minutes. Les nouveaux tests utiliseront de petites tailles.
 - **Contexte** : la mission est très longue. La conversation pourra être résumée automatiquement ; ce plan et les rapports servent de point d'ancrage.
+
+## Après v0.3 (non codé)
+
+Pistes notées au jalon 6, à ne pas réaliser dans cette version :
+
+- **Enrichir la grille avec des distributions aléatoires** (par exemple des tirages de Dirichlet ou des Ising à couplages et champs aléatoires sur plusieurs graines), pour couvrir davantage l'espace des problèmes que les six familles de référence.
+- **Définir « famille connue / inconnue » par une distance dans l'espace des `problem_features`** plutôt que par l'étiquette de famille : un problème proche des problèmes d'entraînement serait traité comme connu. Les problèmes importés en CSV, aujourd'hui toujours de famille inconnue, pourraient alors avoir un intervalle affiché. La règle (distance, seuil) devra être fixée avant de mesurer la couverture, comme pour le CQR.
+
+## Notes pour le rapport final
+
+Recopiées du fichier de travail de la session, qui peut disparaître.
+
+### Points non expliqués
+
+- **Jalon 5 : blocage de la suite de l'API pendant environ 45 minutes.** Un processus de run était inactif, et le pytest parent l'attendait. La relance, avec `faulthandler_timeout=300`, est passée en 5 min 23 s (252 tests). La cause n'a pas été trouvée. Le minuteur de 300 s contourne le problème, il ne le corrige pas. Trois processus orphelins sont restés (PID 6768, 11384 et 35952) : leur arrêt a été refusé par le système de permissions.
+
+### Engagements
+
+- **Jalon 8** : `seed_demo.py`, ou l'entrée du conteneur de l'API, entraîne le modèle de prédiction s'il est absent de `MODELS_DIR` ; à documenter.
+- **CHANGELOG 0.3.0** : dérogation sur le dashboard, et dérogation sur le critère de l'IA (jalon 6, validée par l'auteur).
+
+### Résultats de l'IA (jalon 6)
+
+Voir `docs/PREDICTION.md`.
