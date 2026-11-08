@@ -364,4 +364,6 @@ def predict(bundle: dict, target: str, features: dict) -> dict:
         "situations": situations,
         "coverage": validation["coverage"],
         "gain": validation["gain"],
+        # Erreur absolue moyenne de la valeur retenue (modèle ou référence) sur la validation du cas.
+        "mae": validation["mae"] if source == "model" else validation["reference_mae"][validation["best_reference"]],
     }

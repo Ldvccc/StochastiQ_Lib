@@ -1,70 +1,94 @@
 """Règles de décision de la recommandation (classement, indistinguables, verdict quantique / classique).
 
 Chaque ansatz a une valeur (TVD prédite ou mesurée, sous bruit si un profil
-est choisi) et un intervalle [bas, haut] :
+est choisi) et une nature de preuve (``evidence``), qui fixe son intervalle
+effectif et la règle de verdict (dérogation validée par l'auteur au jalon 8) :
 
-- entraînement déjà fait dans le projet : valeur mesurée, intervalle réduit à
-  ce point (une seule initialisation) ;
-- prédiction avec intervalle fiable : intervalle 10-90 % calibré ;
-- prédiction sans intervalle fiable : intervalle infini, l'ansatz recoupe
-  tous les autres et ne permet de trancher en rien (lecture prudente).
+- ``measured`` (entraînement déjà fait dans le projet, une seule
+  initialisation) : intervalle réduit au point ; verdict par la règle des 10 % :
+  « justified » si TVD < 0,9 × meilleure TVD classique, « not_justified » si
+  TVD > 1,1 ×, sinon « equivalent » (le quantique n'apporte rien) ;
+- ``interval`` (prédiction avec intervalle 10-90 % fiable) : « justified » si
+  la borne haute est sous la meilleure TVD classique, « not_justified » si la
+  borne basse est au-dessus, sinon « undetermined » ;
+- ``margin`` (prédiction sans intervalle fiable) : marge de 2 × l'erreur
+  absolue moyenne de validation du cas comparable ; « probably_justified » si
+  valeur + marge < TVD classique, « probably_not_justified » si valeur − marge
+  > TVD classique, sinon « undetermined ».
 
-Règles, appliquées à l'ansatz classé premier (valeur la plus basse) :
-
-- les ansatz dont l'intervalle recoupe le sien lui sont « indistinguables » ;
-- « justified » si sa borne haute est sous la meilleure TVD classique ;
-- « not_justified » si sa borne basse est au-dessus ;
-- sinon « undetermined », avec les ansatz à entraîner pour trancher : les
-  mieux classés, sans entraînement, dont l'intervalle contient la TVD
-  classique, dans la limite du budget (budget // itérations par entraînement,
-  au moins 1).
+Le verdict suit la preuve de l'ansatz classé premier (valeur la plus basse).
+Les ansatz dont l'intervalle effectif recoupe le sien lui sont
+« indistinguables ». Pour « undetermined », les ansatz à entraîner sont les
+mieux classés, sans entraînement, dont l'intervalle effectif contient la TVD
+classique, dans la limite du budget (budget // itérations par entraînement,
+au moins 1).
 
 Les phrases sont écrites par le web (convention : phrases de lecture côté web).
 """
 
-import math
-
 ITERATIONS_PER_TRAINING = 200
+# Écart relatif sous lequel une TVD mesurée est jugée équivalente à la meilleure TVD classique.
+RELATIVE_MARGIN = 0.1
+# Marge d'une prédiction sans intervalle fiable, en multiples de l'erreur absolue moyenne de validation.
+MAE_MARGIN_FACTOR = 2.0
 
 
 def overlaps(a: dict, b: dict) -> bool:
     return a["low"] <= b["high"] and b["low"] <= a["high"]
 
 
+def effective_interval(candidate: dict) -> tuple[float, float]:
+    """Intervalle effectif selon la nature de la preuve."""
+    if candidate["evidence"] == "measured":
+        return candidate["value"], candidate["value"]
+    if candidate["evidence"] == "interval":
+        return candidate["low"], candidate["high"]
+    return candidate["value"] - candidate["margin"], candidate["value"] + candidate["margin"]
+
+
+def verdict_for(best: dict, classical_tvd: float) -> str:
+    """Verdict quantique / classique pour l'ansatz classé premier."""
+    if best["evidence"] == "measured":
+        if best["value"] < (1 - RELATIVE_MARGIN) * classical_tvd:
+            return "justified"
+        if best["value"] > (1 + RELATIVE_MARGIN) * classical_tvd:
+            return "not_justified"
+        return "equivalent"
+    if best["high"] < classical_tvd:
+        return "justified" if best["evidence"] == "interval" else "probably_justified"
+    if best["low"] > classical_tvd:
+        return "not_justified" if best["evidence"] == "interval" else "probably_not_justified"
+    return "undetermined"
+
+
 def decide(candidates: list[dict], classical_tvd: float, budget: int) -> dict:
     """Classement et verdict.
 
-    ``candidates`` : dicts avec ``key``, ``value``, ``low``, ``high`` (None
-    accepté : intervalle infini) et ``measured`` (booléen). Retourne
-    ``ranking`` (clés dans l'ordre), ``best``, ``indistinguishable`` (clés qui
+    ``candidates`` : dicts avec ``key``, ``value``, ``evidence`` (« measured »,
+    « interval » ou « margin »), ``low`` et ``high`` (preuve « interval ») et
+    ``margin`` (preuve « margin »). Retourne ``ranking`` (clés dans l'ordre),
+    ``best``, ``evidence`` (celle du premier), ``indistinguishable`` (clés qui
     recoupent le premier), ``verdict``, ``to_train`` et ``n_trainings``.
     """
     if len(candidates) < 2:
         raise ValueError("Au moins deux ansatz sont nécessaires.")
-    items = [
-        {
-            **c,
-            "low": -math.inf if c["low"] is None else c["low"],
-            "high": math.inf if c["high"] is None else c["high"],
-        }
-        for c in candidates
-    ]
+    items = []
+    for c in candidates:
+        low, high = effective_interval(c)
+        items.append({**c, "low": low, "high": high})
     items.sort(key=lambda c: (c["value"], c["key"]))
     best = items[0]
     indistinguishable = [c["key"] for c in items[1:] if overlaps(best, c)]
     n_trainings = max(1, budget // ITERATIONS_PER_TRAINING)
+    verdict = verdict_for(best, classical_tvd)
     to_train: list[str] = []
-    if best["high"] < classical_tvd:
-        verdict = "justified"
-    elif best["low"] > classical_tvd:
-        verdict = "not_justified"
-    else:
-        verdict = "undetermined"
-        open_items = [c for c in items if not c["measured"] and c["low"] <= classical_tvd <= c["high"]]
+    if verdict == "undetermined":
+        open_items = [c for c in items if c["evidence"] != "measured" and c["low"] <= classical_tvd <= c["high"]]
         to_train = [c["key"] for c in open_items[:n_trainings]]
     return {
         "ranking": [c["key"] for c in items],
         "best": best["key"],
+        "evidence": best["evidence"],
         "indistinguishable": indistinguishable,
         "verdict": verdict,
         "to_train": to_train,
@@ -121,36 +145,40 @@ def existing_trainings(db, project_id: int, params: dict) -> list:
 
 
 def _compared(prediction: dict, measured: dict | None, noisy: bool) -> dict:
-    """Valeur comparée d'un ansatz, avec son intervalle et sa source."""
+    """Valeur comparée d'un ansatz : valeur, intervalle, marge, nature de la preuve et source."""
+    final, degradation = prediction["final_tvd"], prediction["degradation"]
     if measured is not None and (not noisy or measured["noisy_tvd"] is not None):
         value = measured["noisy_tvd"] if noisy else measured["tvd"]
-        return {"value": value, "low": value, "high": value, "source": "measured", "interval_message": None}
+        return {"value": value, "low": None, "high": None, "margin": None, "evidence": "measured",
+                "source": "measured", "interval_message": None}
     if measured is not None:  # TVD exacte mesurée, dégradation sous bruit prédite
-        degradation = prediction["degradation"]
-        reliable = degradation["interval_reliable"]
-        return {
-            "value": measured["tvd"] + degradation["value"],
-            "low": measured["tvd"] + degradation["low"] if reliable else None,
-            "high": measured["tvd"] + degradation["high"] if reliable else None,
-            "source": "measured_degradation_predicted",
-            "interval_message": None if reliable else degradation["interval_message"],
-        }
-    final = prediction["final_tvd"]
+        value = measured["tvd"] + degradation["value"]
+        source = "measured_degradation_predicted"
+        if degradation["interval_reliable"]:
+            return {"value": value, "low": measured["tvd"] + degradation["low"], "high": measured["tvd"] + degradation["high"],
+                    "margin": None, "evidence": "interval", "source": source, "interval_message": None}
+        return {"value": value, "low": None, "high": None, "margin": MAE_MARGIN_FACTOR * degradation["mae"],
+                "evidence": "margin", "source": source, "interval_message": degradation["interval_message"]}
     if not noisy:
-        return {
-            "value": final["value"],
-            "low": final["low"],
-            "high": final["high"],
-            "source": final["source"],
-            "interval_message": final["interval_message"],
-        }
-    combined, degradation = prediction["noisy_tvd"], prediction["degradation"]
+        if final["interval_reliable"]:
+            return {"value": final["value"], "low": final["low"], "high": final["high"], "margin": None,
+                    "evidence": "interval", "source": final["source"], "interval_message": None}
+        return {"value": final["value"], "low": None, "high": None, "margin": MAE_MARGIN_FACTOR * final["mae"],
+                "evidence": "margin", "source": final["source"], "interval_message": final["interval_message"]}
+    combined = prediction["noisy_tvd"]
+    source = "model" if final["source"] == degradation["source"] == "model" else "reference"
+    if combined["interval_reliable"]:
+        return {"value": combined["value"], "low": combined["low"], "high": combined["high"], "margin": None,
+                "evidence": "interval", "source": source, "interval_message": None}
     messages = [m for m in (final["interval_message"], degradation["interval_message"]) if m]
     return {
         "value": combined["value"],
-        "low": combined["low"],
-        "high": combined["high"],
-        "source": "model" if final["source"] == degradation["source"] == "model" else "reference",
+        "low": None,
+        "high": None,
+        # Somme des erreurs moyennes des deux prédictions additionnées.
+        "margin": MAE_MARGIN_FACTOR * (final["mae"] + degradation["mae"]),
+        "evidence": "margin",
+        "source": source,
         "interval_message": " ".join(messages) or None,
     }
 
@@ -209,7 +237,7 @@ def run_recommendation(p: dict, models_dir: str | None) -> dict:
     tvds = {name: b["metrics"]["tvd"] for name, b in baselines.items()}
     best = min(tvds, key=tvds.get)
     candidates = [
-        {"key": i["key"], "value": i["value"], "low": i["low"], "high": i["high"], "measured": i["measured"] is not None}
+        {key: i[key] for key in ("key", "value", "low", "high", "margin", "evidence")}
         for i in items
     ]
     return {
