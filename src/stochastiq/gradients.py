@@ -40,16 +40,10 @@ def _apply_fixed(states: np.ndarray, matrix: np.ndarray, axes: list[int]) -> np.
     return np.moveaxis(s, list(range(k)), axes)
 
 
-def _expectations(
-    ansatz: QuantumCircuit, thetas: np.ndarray, z_qubits: list[int], product: bool = False
-) -> np.ndarray:
-    """Valeur moyenne d'un observable en Z, pour chaque ligne de ``thetas``.
+def _probability_tensor(ansatz: QuantumCircuit, thetas: np.ndarray) -> np.ndarray:
+    """Probabilités de mesure d'un lot de jeux de paramètres, de forme (B, 2, ..., 2).
 
-    L'observable est la moyenne des Z sur ``z_qubits``, ou leur produit si
-    ``product`` est vrai.
-
-    Simulation par vecteur d'état d'un lot de jeux de paramètres. Les
-    amplitudes ont la forme (B, 2, ..., 2), le qubit q étant sur l'axe n - q
+    Simulation par vecteur d'état. Le qubit q est sur l'axe n - q
     (convention little-endian de Qiskit).
     """
     n = ansatz.num_qubits
@@ -75,7 +69,31 @@ def _expectations(
             matrix = Operator(op).data
             states = _apply_fixed(states, matrix, [n - q for q in reversed(qubits)])
 
-    probs = np.abs(states) ** 2
+    return np.abs(states) ** 2
+
+
+def batched_probabilities(ansatz: QuantumCircuit, thetas: np.ndarray) -> np.ndarray:
+    """Probabilités de mesure de chaque ligne de ``thetas``, de forme (B, 2^n).
+
+    L'indice i suit la convention little-endian de Qiskit : le qubit q vaut le
+    bit q de i (même ordre que ``Statevector.probabilities()``). Portes
+    paramétrées limitées à RX, RY ou RZ d'angle égal à un paramètre
+    (``ValueError`` sinon).
+    """
+    thetas = np.atleast_2d(np.asarray(thetas, dtype=float))
+    return _probability_tensor(ansatz, thetas).reshape(len(thetas), -1)
+
+
+def _expectations(
+    ansatz: QuantumCircuit, thetas: np.ndarray, z_qubits: list[int], product: bool = False
+) -> np.ndarray:
+    """Valeur moyenne d'un observable en Z, pour chaque ligne de ``thetas``.
+
+    L'observable est la moyenne des Z sur ``z_qubits``, ou leur produit si
+    ``product`` est vrai.
+    """
+    n = ansatz.num_qubits
+    probs = _probability_tensor(ansatz, thetas)
     if product:
         # ⟨Z⊗...⊗Z⟩ : somme des probabilités pondérées par la parité des qubits mesurés.
         signs = np.array([1.0, -1.0])

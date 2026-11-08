@@ -1,4 +1,5 @@
 from .ansatz import ansatz_structure, build_ansatz, list_ansatz
+from .baselines import chow_liu_baseline, classical_baselines, independent_baseline
 from .compare import compare, pareto_front
 from .custom_ansatz import build_from_spec, circuit_structure, load_qasm, spec_qubits, validate_ansatz, validate_spec
 from .distributions import (
@@ -19,6 +20,7 @@ from .hardware import hardware_cost, list_topologies
 from .metrics import entangling_capability, expressibility, fidelity_histogram
 from .scaling import fit_decay, gradient_scaling
 from .stats import circuit_stats
+from .training import distribution_metrics, train_qcbm
 
 __all__ = [
     "expressibility",
@@ -53,5 +55,10 @@ __all__ = [
     "load_qasm",
     "validate_ansatz",
     "circuit_structure",
+    "train_qcbm",
+    "distribution_metrics",
+    "independent_baseline",
+    "chow_liu_baseline",
+    "classical_baselines",
 ]
 __version__ = "0.1.0"
