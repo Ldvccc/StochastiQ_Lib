@@ -4,7 +4,7 @@ from stochastiq_api.ml.recommendation import _compared, decide, overlaps
 
 
 def measured(key, value):
-    return {"key": key, "value": value, "evidence": "measured", "low": None, "high": None, "margin": None}
+    return {"key": key, "value": value, "evidence": "measured", "low": None, "high": None, "margin": None, "trained": True}
 
 
 def interval(key, value, low, high):
@@ -161,3 +161,27 @@ def test_mesure_et_degradation_predite_avec_intervalle():
     verdict = decide([candidat, autre], 0.0597, 400)["verdict"]
     assert verdict in ("equivalent", "undetermined")
     assert verdict != "justified"  # sans l'élargissement, la borne haute 0,0595 < 0,0597 aurait donné « se justifie »
+
+
+def test_budget_limite_les_ansatz_a_entrainer_parmi_les_ouverts():
+    # Cas du run 11 : 5 ansatz ouverts, budget de 400 itérations, soit 2 entraînements de 200.
+    candidates = [
+        interval("data_reuploading", 0.0517, 0.0311, 0.1685), interval("strongly_entangling", 0.0603, 0.0261, 0.1668),
+        interval("basic_entangler", 0.0805, 0.0302, 0.177), interval("all_to_all", 0.1068, 0.0401, 0.2265),
+        interval("brick_wall", 0.2636, 0.0414, 0.2954), interval("rotation_only", 0.372, 0.2515, 0.3772),
+    ]
+    result = decide(candidates, 0.0588, 400)
+    assert result["open"] == ["data_reuploading", "strongly_entangling", "basic_entangler", "all_to_all", "brick_wall"]
+    assert result["to_train"] == ["data_reuploading", "strongly_entangling"]
+    assert result["n_trainings"] == 2
+    assert decide(candidates, 0.0588, 1000)["to_train"] == result["open"]  # 5 entraînements permis
+
+
+def test_ansatz_deja_entraine_jamais_propose():
+    # Run 11 : HardwareEfficient déjà entraîné ; sa dégradation prédite donne un intervalle élargi qui contient 0,0588.
+    deja = {**interval("hardware_efficient", 0.0698, 0.055, 0.088), "trained": True}
+    candidates = [deja, interval("strongly_entangling", 0.0603, 0.0261, 0.1668), interval("rotation_only", 0.372, 0.2515, 0.3772)]
+    result = decide(candidates, 0.0588, 2000)
+    assert result["verdict"] == "undetermined"
+    assert "hardware_efficient" not in result["open"]
+    assert result["to_train"] == ["strongly_entangling"]

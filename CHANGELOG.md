@@ -1,5 +1,12 @@
 # Historique des versions
 
+## Non publié
+
+### Corrigé
+- Recommandation : un ansatz déjà entraîné dans le projet, dont seule la dégradation sous bruit est prédite, pouvait encore être proposé à l'entraînement ; il ne l'est plus.
+- Recommandation et rapport : quand le budget ne permet pas d'entraîner tous les ansatz encore ouverts, la phrase le dit (nombre d'ansatz ouverts, nombre d'entraînements permis, ansatz restant à départager).
+- Rapport : le diagnostic léger (200 échantillons) est signalé comme indicatif et sans effet sur la prédiction.
+
 ## 0.3.0 (2026-11-08)
 
 Un client apporte sa distribution et ses ansatz, les entraîne en simulation, avec ou sans bruit, les compare à des méthodes classiques simples, et obtient une prédiction et une recommandation. API et application web en version 0.3.0, bibliothèque `stochastiq` en version 0.2.0 (toujours sans dépendance web).

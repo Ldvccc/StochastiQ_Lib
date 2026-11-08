@@ -349,6 +349,7 @@ export interface RecommendationResult {
     evidence: RecommendationItem["evidence"];
     indistinguishable: string[];
     verdict: "justified" | "not_justified" | "equivalent" | "probably_justified" | "probably_not_justified" | "undetermined";
+    open: string[];
     to_train: string[];
     n_trainings: number;
   };
@@ -422,6 +423,12 @@ export function recommendationSentences(result: RecommendationResult): string[] 
           ? `Indéterminé : entraînez ${quotedList(decision.to_train.map(label))} pour trancher.`
           : "Indéterminé : aucun entraînement supplémentaire ne permet de trancher.",
       );
+      if (decision.open.length > decision.to_train.length) {
+        const rest = decision.open.filter((key) => !decision.to_train.includes(key));
+        sentences.push(
+          `${decision.open.length} ansatz non entraînés ont un intervalle qui contient la meilleure TVD classique ; le budget de ${result.budget} itérations permet ${decision.n_trainings} entraînement(s) de 200 itérations, donc seuls les ${decision.to_train.length} mieux classés sont proposés. ${quotedList(rest.map(label))} restent à départager.`,
+        );
+      }
   }
   return sentences;
 }

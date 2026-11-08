@@ -95,6 +95,15 @@ export function ReportPage() {
           Une TVD mesurée (une seule initialisation) n'a pas d'intervalle : elle n'est jugée meilleure ou moins bonne que la référence classique que si l'écart dépasse
           10 % ; sinon, elle lui est équivalente.
         </p>
+        <p>
+          Les colonnes Expressibilité, Intrication et Variance du gradient viennent d'un diagnostic léger ({String(p.n_samples ?? 200)} échantillons) : elles sont
+          données à titre indicatif, l'expressibilité est surestimée sous 1000 échantillons, et elles n'entrent pas dans la prédiction, qui ne repose que sur la
+          structure du circuit, le problème et le bruit.
+        </p>
+        <p>
+          Budget de {result.budget} itérations, soit {result.decision.n_trainings} entraînement(s) de 200 itérations : seuls les ansatz les mieux classés parmi ceux
+          qui restent à départager sont proposés à l'entraînement ; un ansatz déjà entraîné dans le projet n'est jamais proposé.
+        </p>
         <p>Une seule initialisation par entraînement ; simulation, sans machine réelle. Le détail de la validation est décrit dans docs/PREDICTION.md.</p>
       </section>
     </article>

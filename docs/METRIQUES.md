@@ -178,7 +178,7 @@ Règles de décision de la recommandation (`api/stochastiq_api/ml/recommendation
 - valeur prédite avec intervalle fiable : borne haute sous la TVD classique, ou borne basse au-dessus, sinon « Indéterminé » ;
 - valeur prédite sans intervalle fiable : marge de 2 × l'erreur moyenne de validation, verdicts « probablement », sinon « Indéterminé ».
 
-Un ansatz dont l'intervalle effectif (point, intervalle ou valeur ± marge) recoupe celui du premier lui est « indistinguable ». Pour « Indéterminé », les ansatz à entraîner sont les mieux classés, sans entraînement, dont l'intervalle effectif contient la TVD classique (budget // 200 au plus). Détails et motif : [`PREDICTION.md`](PREDICTION.md).
+Un ansatz dont l'intervalle effectif (point, intervalle ou valeur ± marge) recoupe celui du premier lui est « indistinguable ». Pour « Indéterminé », les ansatz encore ouverts sont ceux qui n'ont aucun entraînement dans le projet et dont l'intervalle effectif contient la TVD classique ; seuls les mieux classés d'entre eux sont proposés à l'entraînement, budget // 200 au plus (400 itérations : 2 entraînements). Un ansatz déjà entraîné, même si sa dégradation sous bruit est prédite, n'est jamais proposé. Détails et motif : [`PREDICTION.md`](PREDICTION.md).
 
 ## Conventions des ansatz
 

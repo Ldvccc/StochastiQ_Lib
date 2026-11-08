@@ -52,6 +52,7 @@ function result(items: RecommendationItem[], decision: Partial<RecommendationRes
       evidence: items[0].evidence,
       indistinguishable: [],
       verdict: "undetermined",
+      open: [],
       to_train: [],
       n_trainings: 2,
       ...decision,
@@ -127,6 +128,13 @@ describe("recommandation", () => {
       to_train: ["hardware_efficient", "brick_wall"],
     });
     expect(recommendationSentences(r)[1]).toBe("Indéterminé : entraînez « HardwareEfficient » et « BrickWall » pour trancher.");
+    const limited = result(
+      [item("hardware_efficient", 0.08, 0.02, 0.2), item("brick_wall", 0.09, 0.03, 0.25), item("all_to_all", 0.1, 0.04, 0.3), item("basic_entangler", 0.11, 0.05, 0.3)],
+      { to_train: ["hardware_efficient", "brick_wall"], open: ["hardware_efficient", "brick_wall", "all_to_all", "basic_entangler"] },
+    );
+    expect(recommendationSentences(limited)[1]).toBe(
+      "4 ansatz non entraînés ont un intervalle qui contient la meilleure TVD classique ; le budget de 400 itérations permet 2 entraînement(s) de 200 itérations, donc seuls les 2 mieux classés sont proposés. « AllToAll » et « BasicEntangler » restent à départager.",
+    );
     expect(recommendationSentences({ ...r, decision: { ...r.decision, to_train: [] } })[1]).toBe(
       "Indéterminé : aucun entraînement supplémentaire ne permet de trancher.",
     );

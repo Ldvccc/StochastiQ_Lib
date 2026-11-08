@@ -131,6 +131,10 @@ Pour une TVD sous bruit prédite (TVD finale plus dégradation), la marge vaut 2
 
 La même règle des 10 % s'applique à la phrase de l'écran Entraînement : l'ansatz « fait mieux » que les références classiques seulement si sa TVD est sous 0,9 × la meilleure, et la référence « fait mieux » au-delà de 1,1 × ; sinon il lui est équivalent.
 
+Pour un verdict « Indéterminé », les ansatz à entraîner sont choisis parmi les ansatz encore ouverts (aucun entraînement dans le projet, intervalle effectif contenant la meilleure TVD classique), dans l'ordre du classement, dans la limite du budget : budget // 200 entraînements de 200 itérations. Le rapport indique combien d'ansatz restent ouverts et lesquels ne sont pas proposés faute de budget. Un ansatz déjà entraîné n'est jamais proposé, même quand sa dégradation sous bruit est prédite.
+
+Le diagnostic léger affiché par la recommandation (200 échantillons) n'entre pas dans la prédiction : les caractéristiques de l'IA sont exactes et déterministes (structure du circuit, problème, bruit), et la grille ne calcule aucun diagnostic.
+
 Ce seuil de 10 % est une règle de lecture fixée par l'auteur, pas une quantité mesurée : il tient compte, grossièrement, de la variabilité d'une seule initialisation.
 
 ## Limites
