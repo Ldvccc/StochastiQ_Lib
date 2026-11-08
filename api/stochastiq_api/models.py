@@ -146,3 +146,18 @@ class Problem(Base):
     features: Mapped[dict] = mapped_column(JSON, default=dict)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CustomAnsatz(Base):
+    """Ansatz du client : spec JSON normalisée ou texte OpenQASM, validés à l'enregistrement."""
+
+    __tablename__ = "custom_ansatz"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    format: Mapped[str] = mapped_column(String(10))  # "spec" ou "qasm"
+    content: Mapped[str] = mapped_column(Text)
+    n_qubits: Mapped[int | None] = mapped_column(Integer, nullable=True)  # fixé (QASM, spec « custom »), sinon None
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

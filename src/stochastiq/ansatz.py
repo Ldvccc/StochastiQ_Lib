@@ -62,6 +62,27 @@ def _brick(n_qubits: int, layer: int) -> list[tuple[int, int]]:
     return [(i, i + 1) for i in range(layer % 2, n_qubits - 1, 2)]
 
 
+# Motifs d'intrication publics, réutilisés par les ansatz du client
+# (custom_ansatz.build_from_spec). Chaque fonction (n_qubits, couche) retourne
+# la liste des CNOT (contrôle, cible) de la couche.
+ENTANGLERS = {
+    "ring": _ring,
+    "basic_ring": _basic_ring,
+    "strongly": _strongly_ranges,
+    "linear": _linear,
+    "all_pairs": _all_pairs,
+    "brick": _brick,
+    "none": _none,
+}
+
+
+def entangler_pairs(name: str, n_qubits: int, layer: int) -> list[tuple[int, int]]:
+    """CNOT (contrôle, cible) de la couche ``layer`` pour le motif ``name`` (voir ``ENTANGLERS``)."""
+    if name not in ENTANGLERS:
+        raise ValueError(f"Motif d'intrication inconnu : {name!r}. Motifs valides : {', '.join(ENTANGLERS)}.")
+    return ENTANGLERS[name](n_qubits, layer)
+
+
 # nom -> (rotations appliquées sur chaque qubit, CNOT de la couche l)
 _ANSATZ = {
     "basic_entangler": (("rx",), _basic_ring),

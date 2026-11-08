@@ -168,3 +168,17 @@ export interface DistributionInfo {
   random: boolean;
   qubits: number[];
 }
+
+export interface CustomAnsatz {
+  id: number;
+  name: string;
+  format: "spec" | "qasm";
+  content: string;
+  spec: { rotations: string[]; entangler: string; pairs?: number[][] } | null;
+  n_qubits: number | null;
+  created_by: number | null;
+  created_at: string;
+}
+
+/** Référence d'ansatz dans les paramètres d'un run : nom du catalogue ou ansatz personnalisé. */
+export type AnsatzRef = string | { custom_id: number };

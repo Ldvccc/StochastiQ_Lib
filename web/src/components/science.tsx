@@ -1,8 +1,8 @@
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 
 import { api } from "../api/client";
-import type { AnsatzInfo, Comment, Run, Topology } from "../api/types";
-import { CSV_LABEL, downloadCsv, toCsv } from "../lib/csv";
+import type { AnsatzInfo, AnsatzRef, Comment, CustomAnsatz, Run, Topology } from "../api/types";
+import { CSV_LABEL, csvParams, downloadCsv, toCsv } from "../lib/csv";
 import { formatDateTime } from "../lib/format";
 import { useAsync } from "../lib/useAsync";
 import { Empty, ErrorState, GuardedButton, Loading, StatusPill } from "./common";
@@ -10,6 +10,33 @@ import { useProject } from "./ProjectContext";
 
 export function useAnsatzCatalog() {
   return useAsync(() => api.get<AnsatzInfo[]>("/ansatz"), []);
+}
+
+export interface AnsatzOption {
+  value: string; // "cat:<nom>" ou "custom:<id>"
+  label: string;
+  ref: AnsatzRef;
+  fixedQubits: number | null; // nombre de qubits imposé (QASM, spec « custom »)
+}
+
+/** Ansatz du catalogue puis ansatz personnalisés du projet, pour les listes déroulantes. */
+export function useAnsatzOptions(projectId: number) {
+  return useAsync(async () => {
+    const [catalog, custom] = await Promise.all([
+      api.get<AnsatzInfo[]>("/ansatz"),
+      api.get<CustomAnsatz[]>(`/projects/${projectId}/custom-ansatz`),
+    ]);
+    const options: AnsatzOption[] = [
+      ...catalog.map((a) => ({ value: `cat:${a.name}`, label: a.label, ref: a.name, fixedQubits: null })),
+      ...custom.map((a) => ({
+        value: `custom:${a.id}`,
+        label: `${a.name} (personnalisé${a.n_qubits ? `, ${a.n_qubits} qubits` : ""})`,
+        ref: { custom_id: a.id },
+        fixedQubits: a.n_qubits,
+      })),
+    ];
+    return options;
+  }, [projectId]);
 }
 
 export function useTopologies() {
@@ -48,7 +75,7 @@ export function MetricCard({ label, value, help, detail }: { label: string; valu
 
 export function CsvButton({ filename, rows, params }: { filename: string; rows: Record<string, unknown>[]; params: Record<string, unknown> }) {
   return (
-    <button type="button" className="secondary" disabled={rows.length === 0} onClick={() => downloadCsv(filename, toCsv(rows, params))}>
+    <button type="button" className="secondary" disabled={rows.length === 0} onClick={() => downloadCsv(filename, toCsv(rows, csvParams(params)))}>
       {CSV_LABEL}
     </button>
   );

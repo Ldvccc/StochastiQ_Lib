@@ -17,6 +17,15 @@ export function ansatzLabel(name: string): string {
   return ANSATZ_LABELS[name] ?? name;
 }
 
+/** Libellé d'un ansatz dans les paramètres d'un run : nom du catalogue ou ansatz personnalisé. */
+export function refLabel(ref: unknown): string {
+  if (typeof ref === "string") return ansatzLabel(ref);
+  const custom = (ref as { custom?: { name?: string } } | null)?.custom;
+  if (custom?.name) return `${custom.name} (personnalisé)`;
+  const id = (ref as { custom_id?: number } | null)?.custom_id;
+  return id !== undefined ? `Ansatz personnalisé n° ${id}` : String(ref);
+}
+
 export const LOW_SAMPLES_THRESHOLD = 1000;
 export const LOW_SAMPLES_WARNING =
   "Avec moins de 1000 échantillons, l'expressibilité est surestimée. Comparez uniquement des résultats obtenus avec le même nombre d'échantillons.";

@@ -12,6 +12,7 @@ import { TeamPage } from "./pages/TeamPage";
 
 // Écrans scientifiques chargés à la demande : ils embarquent les graphiques (Recharts).
 const ProblemsPage = lazy(() => import("./pages/ProblemsPage").then((m) => ({ default: m.ProblemsPage })));
+const CustomAnsatzPage = lazy(() => import("./pages/CustomAnsatzPage").then((m) => ({ default: m.CustomAnsatzPage })));
 const DiagnosticPage = lazy(() => import("./pages/DiagnosticPage").then((m) => ({ default: m.DiagnosticPage })));
 const ComparePage = lazy(() => import("./pages/ComparePage").then((m) => ({ default: m.ComparePage })));
 const AnsatzPage = lazy(() => import("./pages/AnsatzPage").then((m) => ({ default: m.AnsatzPage })));
@@ -53,6 +54,7 @@ export function AppRoutes() {
           <Route path="diagnostic" element={<Screen><DiagnosticPage /></Screen>} />
           <Route path="comparateur" element={<Screen><ComparePage /></Screen>} />
           <Route path="ansatz" element={<Screen><AnsatzPage /></Screen>} />
+          <Route path="mes-ansatz" element={<Screen><CustomAnsatzPage /></Screen>} />
           <Route path="plateau-sterile" element={<Screen><BarrenPage /></Screen>} />
           <Route path="jobs" element={<Screen><JobsPage /></Screen>} />
           <Route path="jobs/:runId" element={<Screen><RunDetailPage /></Screen>} />

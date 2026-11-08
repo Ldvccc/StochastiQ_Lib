@@ -22,6 +22,8 @@ dependencies = [
     "pydantic-settings>=2.2",
     # Utilisé par scripts/seed_demo.py (TestClient de FastAPI), y compris dans l'image Docker.
     "httpx>=0.27",
+    # OpenQASM 3 pour les ansatz du client.
+    "qiskit_qasm3_import>=0.5",
 ]
 
 [project.optional-dependencies]

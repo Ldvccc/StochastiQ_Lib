@@ -3,15 +3,22 @@
 // cible (disque encre avec un « + » blanc) reliés par un trait ; fils horizontaux.
 
 export interface Gate {
-  type: "RX" | "RY" | "RZ" | "CNOT";
+  type: string; // "RX", "RY", "RZ", "CNOT" ou toute autre porte (H, CZ, SWAP...)
   qubits: number[];
   param_index: number | null;
 }
 
 export interface Structure {
   n_qubits: number;
-  layers: number;
+  layers?: number | null;
   columns: { gates: Gate[] }[];
+}
+
+const ROTATIONS = new Set(["RX", "RY", "RZ"]);
+
+/** « 1 couche », « 3 couches » (pluriel français à partir de 2). */
+function count(n: number, word: string): string {
+  return `${n} ${word}${n >= 2 ? "s" : ""}`;
 }
 
 const INK = "#14163f";
@@ -26,13 +33,17 @@ export function CircuitSvg({ structure, label }: { structure: Structure; label: 
   const height = TOP + (structure.n_qubits - 1) * WIRE_GAP + 28;
   const y = (qubit: number) => TOP + qubit * WIRE_GAP;
   const x = (column: number) => LEFT + column * COLUMN + COLUMN / 2;
-  const rotations = structure.columns.flatMap((c) => c.gates).filter((g) => g.type !== "CNOT").length;
-  const cnots = structure.columns.flatMap((c) => c.gates).filter((g) => g.type === "CNOT").length;
+  const gates = structure.columns.flatMap((c) => c.gates);
+  const rotations = gates.filter((g) => ROTATIONS.has(g.type)).length;
+  const cnots = gates.filter((g) => g.type === "CNOT").length;
+  const others = gates.length - rotations - cnots;
+  const layersText = structure.layers ? `, ${count(structure.layers, "couche")}` : "";
+  const othersText = others === 0 ? "" : others === 1 ? " et 1 autre porte" : ` et ${others} autres portes`;
   return (
     <div className="table-wrap">
       <svg
         role="img"
-        aria-label={`${label} : ${structure.n_qubits} qubits, ${structure.layers} couches, ${rotations} rotations et ${cnots} CNOT`}
+        aria-label={`${label} : ${structure.n_qubits} qubits${layersText}, ${count(rotations, "rotation")}, ${cnots} CNOT${othersText}`}
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
@@ -60,13 +71,23 @@ export function CircuitSvg({ structure, label }: { structure: Structure; label: 
                 </g>
               );
             }
-            const q = gate.qubits[0];
+            // Rotation paramétrée : boîte violette ; autre porte : boîte encre. Les portes
+            // à plusieurs qubits sont reliées par un trait vertical.
+            const fill = ROTATIONS.has(gate.type) ? VIOLET : INK;
+            const label = gate.type.length > 4 ? gate.type.slice(0, 4) : gate.type;
             return (
               <g key={`${c}-${g}`} data-gate={gate.type}>
-                <rect x={x(c) - 20} y={y(q) - 14} width={40} height={28} rx={6} fill={VIOLET} />
-                <text x={x(c)} y={y(q) + 5} textAnchor="middle" fontSize={12} fontWeight={600} fill="#ffffff">
-                  {gate.type}
-                </text>
+                {gate.qubits.length > 1 && (
+                  <line x1={x(c)} x2={x(c)} y1={y(Math.min(...gate.qubits))} y2={y(Math.max(...gate.qubits))} stroke={INK} strokeWidth={1.5} />
+                )}
+                {gate.qubits.map((q) => (
+                  <g key={q}>
+                    <rect x={x(c) - 20} y={y(q) - 14} width={40} height={28} rx={6} fill={fill} />
+                    <text x={x(c)} y={y(q) + 5} textAnchor="middle" fontSize={12} fontWeight={600} fill="#ffffff">
+                      {label}
+                    </text>
+                  </g>
+                ))}
               </g>
             );
           }),

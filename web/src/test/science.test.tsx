@@ -69,7 +69,7 @@ describe("graphiques sur données synthétiques", () => {
       ],
     };
     const { container } = render(<CircuitSvg structure={structure} label="HardwareEfficient" />);
-    expect(screen.getByRole("img")).toHaveAccessibleName("HardwareEfficient : 3 qubits, 1 couches, 3 rotations et 2 CNOT");
+    expect(screen.getByRole("img")).toHaveAccessibleName("HardwareEfficient : 3 qubits, 1 couche, 3 rotations, 2 CNOT");
     expect(container.querySelectorAll('[data-gate="RY"]')).toHaveLength(3);
     expect(container.querySelectorAll('[data-gate="CNOT"]')).toHaveLength(2);
   });
@@ -94,11 +94,13 @@ describe("formulaire de diagnostic", () => {
   function renderPage(role: Project["role"]) {
     vi.stubGlobal(
       "fetch",
-      vi.fn(() =>
+      vi.fn((url: string) =>
         Promise.resolve(
-          new Response(JSON.stringify([{ name: "hardware_efficient", label: "HardwareEfficient", description: "", parameters: "2·L·n" }]), {
-            status: 200,
-          }),
+          new Response(
+            // Catalogue des ansatz ; aucun ansatz personnalisé dans le projet.
+            JSON.stringify(url.includes("custom-ansatz") ? [] : [{ name: "hardware_efficient", label: "HardwareEfficient", description: "", parameters: "2·L·n" }]),
+            { status: 200 },
+          ),
         ),
       ),
     );

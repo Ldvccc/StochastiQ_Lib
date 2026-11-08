@@ -5,9 +5,9 @@ import { api } from "../api/client";
 import type { Machine, Page, Run, RunKind, RunStatus, RunSummary } from "../api/types";
 import { Empty, ErrorState, GuardedButton, Loading, StatusPill } from "../components/common";
 import { useProject } from "../components/ProjectContext";
-import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzCatalog, useTopologies } from "../components/science";
+import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzOptions, useTopologies } from "../components/science";
 import { formatDateTime, formatFactor } from "../lib/format";
-import { ansatzLabel } from "../lib/reading";
+import { ansatzLabel, refLabel } from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
 import { useAsync } from "../lib/useAsync";
 import { KIND_LABELS } from "./ProjectPage";
@@ -119,14 +119,16 @@ export function hardwareRows(result: HardwareResult) {
 
 function HardwareTab({ projectId }: { projectId: number }) {
   const { can, reason } = useProject();
-  const catalog = useAnsatzCatalog();
+  const catalog = useAnsatzOptions(projectId);
   const topologies = useTopologies();
   const [params, setParams] = useSearchParams();
   const runId = params.get("run") ? Number(params.get("run")) : null;
   const { run, error: pollError } = useRunPolling<HardwareResult>(projectId, runId);
-  const [form, setForm] = useState({ ansatz: "data_reuploading", n_qubits: 4, layers: 3, topology: "line", seed: 0 });
+  const [form, setForm] = useState({ ansatz: "cat:data_reuploading", n_qubits: 4, layers: 3, topology: "line", seed: 0 });
   const [error, setError] = useState<string | null>(null);
   const errors = boundErrors({ n_qubits: form.n_qubits, layers: form.layers, seed: form.seed });
+  const fixed = catalog.data?.find((o) => o.value === form.ansatz)?.fixedQubits ?? null;
+  if (!errors.n_qubits && fixed !== null && form.n_qubits !== fixed) errors.n_qubits = `Cet ansatz fixe ${fixed} qubits.`;
   const invalid = Object.keys(errors).length > 0;
   const topologyLabel = (name: string) => topologies.data?.find((t) => t.name === name)?.label ?? name;
 
@@ -135,7 +137,9 @@ function HardwareTab({ projectId }: { projectId: number }) {
     if (invalid) return;
     setError(null);
     try {
-      const created = await launchRun(projectId, "hardware", form);
+      const option = catalog.data?.find((o) => o.value === form.ansatz);
+      if (!option) return;
+      const created = await launchRun(projectId, "hardware", { ...form, ansatz: option.ref });
       setParams({ tab: "materiel", run: String(created.id) });
     } catch (err) {
       setError((err as Error).message);
@@ -151,7 +155,7 @@ function HardwareTab({ projectId }: { projectId: number }) {
             Ansatz
             <select value={form.ansatz} onChange={(e) => setForm({ ...form, ansatz: e.target.value })}>
               {(catalog.data ?? []).map((a) => (
-                <option key={a.name} value={a.name}>
+                <option key={a.value} value={a.value}>
                   {a.label}
                 </option>
               ))}
@@ -323,7 +327,8 @@ const PARAM_LABELS: Record<string, string> = {
 };
 
 function paramValue(value: unknown): string {
-  if (Array.isArray(value)) return value.map((v) => ansatzLabel(String(v))).join(", ");
+  if (Array.isArray(value)) return value.map(refLabel).join(", ");
+  if (typeof value === "object" && value !== null) return refLabel(value);
   if (typeof value === "boolean") return value ? "oui" : "non";
   if (typeof value === "string") return ansatzLabel(value);
   return String(value);

@@ -1,5 +1,7 @@
 from collections.abc import Callable, Iterable
 
+from qiskit import QuantumCircuit
+
 import numpy as np
 import pandas as pd
 
@@ -10,7 +12,7 @@ _LAYERS_MODES = ("fixed", "linear")
 
 
 def gradient_scaling(
-    name: str,
+    name: str | Callable[[int, int], QuantumCircuit],
     qubit_range: Iterable[int] = range(2, 9),
     layers: int = 3,
     layers_mode: str = "fixed",
@@ -28,8 +30,10 @@ def gradient_scaling(
 
     Paramètres
     ----------
-    name : str
-        Nom de l'ansatz, parmi ``list_ansatz()``.
+    name : str ou callable
+        Nom de l'ansatz, parmi ``list_ansatz()``, ou constructeur
+        ``(n_qubits, layers) -> QuantumCircuit`` (par exemple un ansatz du
+        client construit par ``custom_ansatz.build_from_spec``).
     qubit_range : itérable d'entiers
         Nombres de qubits étudiés.
     layers : int
@@ -73,7 +77,7 @@ def gradient_scaling(
     rows = []
     for done, n_qubits in enumerate(qubits, start=1):
         n_layers = layers if layers_mode == "fixed" else n_qubits
-        ansatz = build_ansatz(name, n_qubits, n_layers)
+        ansatz = build_ansatz(name, n_qubits, n_layers) if isinstance(name, str) else name(n_qubits, n_layers)
         details = gradient_variance_details(
             ansatz, n_samples=n_samples, observable=observable, seed=seed
         )

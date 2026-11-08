@@ -24,14 +24,25 @@ RunKind = Literal["diagnostic", "compare", "scaling", "hardware"]
 RunStatus = Literal["pending", "running", "done", "failed"]
 
 
-def _unique(names: list[str]) -> list[str]:
-    if len(set(names)) != len(names):
+class CustomRef(Input):
+    """Référence à un ansatz personnalisé du projet (résolue par l'API avant l'enregistrement du run)."""
+
+    custom_id: Annotated[int, Field(ge=1)]
+
+
+# Nom du catalogue ou ansatz personnalisé du projet.
+AnsatzRef = Union[AnsatzName, CustomRef]
+
+
+def _unique(refs: list) -> list:
+    keys = [ref if isinstance(ref, str) else ("custom", ref.custom_id) for ref in refs]
+    if len(set(keys)) != len(keys):
         raise ValueError("Chaque ansatz ne doit figurer qu'une fois.")
-    return names
+    return refs
 
 
 class DiagnosticParams(Input):
-    ansatz: AnsatzName
+    ansatz: AnsatzRef
     n_qubits: Qubits
     layers: Layers
     n_samples: Samples = 1000
@@ -40,7 +51,7 @@ class DiagnosticParams(Input):
 
 
 class CompareParams(Input):
-    ansatz: Annotated[list[AnsatzName], Field(min_length=1, max_length=7)]
+    ansatz: Annotated[list[AnsatzRef], Field(min_length=1, max_length=7)]
     n_qubits: Qubits
     layers: Layers
     n_samples: Samples = 1000
@@ -51,7 +62,7 @@ class CompareParams(Input):
 
 
 class ScalingParams(Input):
-    ansatz: Annotated[list[AnsatzName], Field(min_length=1, max_length=4)]
+    ansatz: Annotated[list[AnsatzRef], Field(min_length=1, max_length=4)]
     qubit_min: Qubits = 2
     qubit_max: Qubits = 6
     layers: Layers = 3
@@ -72,7 +83,7 @@ class ScalingParams(Input):
 
 
 class HardwareParams(Input):
-    ansatz: AnsatzName
+    ansatz: AnsatzRef
     n_qubits: Qubits
     layers: Layers
     topology: TopologyName = "line"

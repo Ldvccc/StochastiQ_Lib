@@ -27,6 +27,7 @@ PERMISSIONS: list[dict[str, str]] = [
     {"action": "run", "label": "Lancer des runs", "min_role": "editor"},
     {"action": "pin", "label": "Épingler et désépingler des circuits", "min_role": "editor"},
     {"action": "problems", "label": "Créer, renommer et supprimer des problèmes", "min_role": "editor"},
+    {"action": "custom_ansatz", "label": "Créer, renommer et supprimer des ansatz personnalisés", "min_role": "editor"},
     {
         "action": "machines",
         "label": "Gérer les machines (fournisseur et libellé, sans clé)",

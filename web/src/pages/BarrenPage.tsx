@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { ScalingChart, SERIES_STYLES, type ScalingLine } from "../components/charts";
 import { ErrorState, GuardedButton } from "../components/common";
 import { useProject } from "../components/ProjectContext";
-import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzCatalog } from "../components/science";
+import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzOptions } from "../components/science";
 import { formatFactor, formatFr, formatPercent } from "../lib/format";
 import { ansatzLabel, layersLine, observablesSentence, PROPORTIONAL_LAYERS_NOTE, scalingSentence, type Fit } from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
@@ -50,11 +50,13 @@ export function scalingLines(series: Series[], compareObservables: boolean): Sca
 
 export function BarrenPage() {
   const { project, can, reason } = useProject();
-  const catalog = useAnsatzCatalog();
+  // Un ansatz à nombre de qubits fixe ne se prête pas à une étude de scaling : il n'est pas proposé.
+  const options = useAnsatzOptions(project.id);
+  const catalog = { ...options, data: options.data?.filter((o) => o.fixedQubits === null) ?? null };
   const [params, setParams] = useSearchParams();
   const runId = params.get("run") ? Number(params.get("run")) : null;
   const { run, error: pollError } = useRunPolling<{ series: Series[] }>(project.id, runId);
-  const [selected, setSelected] = useState<string[]>(["hardware_efficient", "strongly_entangling", "data_reuploading"]);
+  const [selected, setSelected] = useState<string[]>(["cat:hardware_efficient", "cat:strongly_entangling", "cat:data_reuploading"]);
   const [form, setForm] = useState({ qubit_min: 2, qubit_max: 6, layers: 3, n_samples: 100, seed: 0 });
   const [mode, setMode] = useState<"fixed" | "linear">("fixed");
   const [observable, setObservable] = useState<"Z0" | "Zall">("Z0");
@@ -75,7 +77,7 @@ export function BarrenPage() {
     setError(null);
     try {
       const created = await launchRun(project.id, "scaling", {
-        ansatz: selected,
+        ansatz: (catalog.data ?? []).filter((o) => selected.includes(o.value)).map((o) => o.ref),
         ...form,
         layers_mode: mode,
         observable,
@@ -106,11 +108,11 @@ export function BarrenPage() {
           <legend style={{ fontWeight: 500, marginBottom: 8 }}>Ansatz ({MAX_ANSATZ} au plus)</legend>
           <div className="row">
             {(catalog.data ?? []).map((a) => {
-              const checked = selected.includes(a.name);
+              const checked = selected.includes(a.value);
               const blocked = !checked && selected.length >= MAX_ANSATZ;
               return (
-                <label key={a.name} style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }} title={blocked ? "4 ansatz au plus" : undefined}>
-                  <input type="checkbox" checked={checked} disabled={blocked} onChange={() => toggle(a.name)} style={{ minHeight: 0, width: 20, height: 20 }} />
+                <label key={a.value} style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }} title={blocked ? "4 ansatz au plus" : undefined}>
+                  <input type="checkbox" checked={checked} disabled={blocked} onChange={() => toggle(a.value)} style={{ minHeight: 0, width: 20, height: 20 }} />
                   {a.label}
                 </label>
               );
