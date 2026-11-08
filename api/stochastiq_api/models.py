@@ -129,3 +129,20 @@ class Machine(Base):
     label: Mapped[str] = mapped_column(String(100))
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Problem(Base):
+    """Distribution cible d'un client. Le contenu d'un CSV importé n'est pas conservé, seulement le vecteur."""
+
+    __tablename__ = "problems"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    n_qubits: Mapped[int] = mapped_column(Integer)
+    origin: Mapped[str] = mapped_column(String(20))  # "reference" ou "csv"
+    probabilities: Mapped[list] = mapped_column(JSON)
+    source_params: Mapped[dict] = mapped_column(JSON, default=dict)
+    features: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

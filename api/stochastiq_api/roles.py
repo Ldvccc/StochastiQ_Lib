@@ -26,6 +26,7 @@ PERMISSIONS: list[dict[str, str]] = [
     {"action": "comment", "label": "Commenter les runs", "min_role": "viewer"},
     {"action": "run", "label": "Lancer des runs", "min_role": "editor"},
     {"action": "pin", "label": "Épingler et désépingler des circuits", "min_role": "editor"},
+    {"action": "problems", "label": "Créer, renommer et supprimer des problèmes", "min_role": "editor"},
     {
         "action": "machines",
         "label": "Gérer les machines (fournisseur et libellé, sans clé)",

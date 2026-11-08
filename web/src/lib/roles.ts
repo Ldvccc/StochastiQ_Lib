@@ -15,6 +15,7 @@ export const DEFAULT_PERMISSIONS: Permission[] = [
   { action: "comment", label: "Commenter les runs", min_role: "viewer" },
   { action: "run", label: "Lancer des runs", min_role: "editor" },
   { action: "pin", label: "Épingler et désépingler des circuits", min_role: "editor" },
+  { action: "problems", label: "Créer, renommer et supprimer des problèmes", min_role: "editor" },
   { action: "machines", label: "Gérer les machines (fournisseur et libellé, sans clé)", min_role: "key_manager" },
   { action: "edit_project", label: "Modifier le nom et la description du projet", min_role: "owner" },
   { action: "invite", label: "Inviter des membres et révoquer des invitations", min_role: "owner" },

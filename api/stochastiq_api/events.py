@@ -13,6 +13,7 @@ EVENT_TYPES = (
     "member_joined",
     "role_changed",
     "machine_added",
+    "problem_added",
 )
 
 
