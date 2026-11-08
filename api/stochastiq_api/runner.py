@@ -185,6 +185,10 @@ KINDS = {
 }
 
 
-def execute(kind: str, params: dict) -> dict:
-    """Exécute un run et retourne son résultat sérialisable."""
+def execute(kind: str, params: dict, models_dir: str | None = None) -> dict:
+    """Exécute un run et retourne son résultat sérialisable (``models_dir`` : modèle de prédiction)."""
+    if kind == "recommendation":
+        from .ml.recommendation import run_recommendation
+
+        return to_json(run_recommendation(params, models_dir))
     return to_json(KINDS[kind](params))

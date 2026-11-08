@@ -8,6 +8,7 @@ const KIND_LABELS: Record<string, string> = {
   hardware: "coût matériel",
   training: "entraînement",
   noise: "bruit",
+  recommendation: "recommandation",
 };
 
 function role(value: unknown): string {

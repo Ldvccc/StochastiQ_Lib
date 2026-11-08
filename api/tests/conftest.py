@@ -1,4 +1,5 @@
 import itertools
+from pathlib import Path
 
 import pytest
 from argon2 import PasswordHasher
@@ -9,6 +10,7 @@ from stochastiq_api.config import Settings
 from stochastiq_api.main import create_app
 
 PASSWORD = "motdepasse-solide"
+GRID = Path(__file__).resolve().parents[2] / "data" / "results_grid.csv"
 
 _counter = itertools.count()
 
@@ -76,3 +78,24 @@ def team(client):
         members[role], ids[role] = add_member(client, owner, project_id, role)
     members["outsider"] = register(client, name="Extérieur")
     return {"project_id": project_id, "headers": members, "ids": ids}
+
+
+@pytest.fixture(scope="session")
+def bundle():
+    """Modèle de prédiction entraîné sur un sous-ensemble de la grille réelle (1 couche) : rapide, mêmes colonnes."""
+    import pandas as pd
+
+    from stochastiq_api.ml.predictor import train_predictor
+
+    frame = pd.read_csv(GRID)
+    return train_predictor(frame[frame["layers"] == 1], "test")
+
+
+@pytest.fixture
+def model_client(settings, bundle, tmp_path):
+    """Client dont MODELS_DIR contient le modèle ``bundle``."""
+    from stochastiq_api.ml.predictor import save_bundle
+
+    save_bundle(bundle, tmp_path / "models")
+    with TestClient(create_app(settings)) as test_client:
+        yield test_client

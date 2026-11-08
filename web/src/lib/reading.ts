@@ -304,3 +304,87 @@ export function logTickLabel(value: number): string {
   }
   return formatFr(value, Math.max(0, -exponent));
 }
+
+// ---- Recommandation ----
+
+export interface PredictionValue {
+  value: number;
+  low: number | null;
+  high: number | null;
+  source: "model" | "reference";
+  interval_reliable: boolean;
+  interval_message: string | null;
+  validation_label: string;
+  coverage: number;
+}
+
+export interface RecommendationItem {
+  key: string;
+  ref: unknown;
+  diagnostic: { expressibility: number; entangling_capability: number; gradient_mean_variance: number; n_parameters: number; n_two_qubit_gates: number };
+  prediction: { final_tvd: PredictionValue; degradation: PredictionValue | null; noisy_tvd: { value: number; low: number | null; high: number | null; interval_reliable: boolean } | null };
+  measured: { run_id: number; tvd: number; noisy_tvd: number | null } | null;
+  value: number;
+  low: number | null;
+  high: number | null;
+  source: "measured" | "measured_degradation_predicted" | "model" | "reference";
+  interval_message: string | null;
+}
+
+export interface RecommendationResult {
+  n_qubits: number;
+  layers: number;
+  noise_profile: NoiseRates | null;
+  topology: NoiseTopology;
+  budget: number;
+  classical: { best: "independent" | "chow_liu"; best_tvd: number; baselines: Record<"independent" | "chow_liu", { tvd: number; n_parameters: number }> };
+  items: RecommendationItem[];
+  decision: { ranking: string[]; best: string; indistinguishable: string[]; verdict: "justified" | "not_justified" | "undetermined"; to_train: string[]; n_trainings: number };
+}
+
+/** Liste française entre guillemets : « A », « A » et « B », « A », « B » et « C ». */
+export function quotedList(names: string[]): string {
+  const quoted = names.map((n) => `« ${n} »`);
+  return quoted.length <= 1 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} et ${quoted[quoted.length - 1]}`;
+}
+
+/** Libellé d'un élément de la recommandation (nom du catalogue ou ansatz personnalisé). */
+export function itemLabel(item: RecommendationItem): string {
+  return refLabel(item.ref);
+}
+
+/** Phrases de la recommandation : indistinguables, puis verdict quantique / classique (règles calculées par l'API). */
+export function recommendationSentences(result: RecommendationResult): string[] {
+  const byKey = new Map(result.items.map((item) => [item.key, item]));
+  const label = (key: string) => itemLabel(byKey.get(key)!);
+  const { decision, classical } = result;
+  const best = byKey.get(decision.best)!;
+  const quantity = result.noise_profile ? "TVD sous bruit" : "TVD";
+  const classicalText = `${formatMetric(classical.best_tvd)}, ${BASELINE_LABELS[classical.best]}`;
+  const sentences: string[] = [];
+  if (decision.indistinguishable.length > 0) {
+    const names = [decision.best, ...decision.indistinguishable].map(label);
+    sentences.push(`${quotedList(names)} sont indistinguables : leurs intervalles se recouvrent.`);
+  }
+  if (decision.verdict === "justified") {
+    sentences.push(
+      `Le quantique se justifie sur ce problème : la borne haute de « ${label(decision.best)} » (${quantity} ${formatMetric(best.high)}) est sous la meilleure TVD classique (${classicalText}).`,
+    );
+  } else if (decision.verdict === "not_justified") {
+    sentences.push(
+      `Le quantique ne se justifie pas : la borne basse de « ${label(decision.best)} » (${quantity} ${formatMetric(best.low)}) est au-dessus de la meilleure TVD classique (${classicalText}).`,
+    );
+  } else if (decision.to_train.length > 0) {
+    sentences.push(`Indéterminé : entraînez ${quotedList(decision.to_train.map(label))} pour trancher.`);
+  } else {
+    sentences.push("Indéterminé : aucun entraînement supplémentaire ne permet de trancher.");
+  }
+  return sentences;
+}
+
+export const SOURCE_LABELS: Record<RecommendationItem["source"], string> = {
+  measured: "Entraînement mesuré",
+  measured_degradation_predicted: "TVD mesurée, dégradation prédite",
+  model: "Prédiction (modèle)",
+  reference: "Prédiction (référence)",
+};

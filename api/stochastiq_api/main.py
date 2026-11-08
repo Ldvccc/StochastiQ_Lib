@@ -23,7 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         upgrade_database(settings.database_url)
         mark_orphans_failed(app.state.sessionmaker)
-        app.state.runs = RunManager(app.state.sessionmaker, settings.run_timeout_seconds)
+        app.state.runs = RunManager(app.state.sessionmaker, settings.run_timeout_seconds, settings.models_dir)
         yield
         app.state.runs.shutdown()
         app.state.engine.dispose()

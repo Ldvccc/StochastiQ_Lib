@@ -334,6 +334,8 @@ const PARAM_LABELS: Record<string, string> = {
   profile: "Profil de bruit",
   noise_profile: "Bruit",
   evaluate_noise: "Évaluation sous bruit",
+  budget: "Budget d'itérations",
+  problem_family: "Famille du problème",
 };
 
 function paramValue(value: unknown): string {
@@ -357,10 +359,11 @@ const SCREENS: Partial<Record<RunKind, string>> = {
   scaling: "plateau-sterile",
   hardware: "jobs?tab=materiel&",
   training: "entrainement",
+  recommendation: "recommandation",
 };
 
 // Paramètres recopiés pour la reproductibilité, trop longs pour être affichés (vecteur cible).
-const HIDDEN_PARAMS = new Set(["target"]);
+const HIDDEN_PARAMS = new Set(["target", "existing"]);
 
 export function RunDetailPage() {
   const { project } = useProject();

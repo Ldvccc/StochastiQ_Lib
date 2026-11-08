@@ -20,6 +20,7 @@ export const KIND_LABELS: Record<string, string> = {
   hardware: "Coût matériel",
   training: "Entraînement",
   noise: "Bruit",
+  recommendation: "Recommandation",
 };
 
 const PAGE_SIZE = 20;

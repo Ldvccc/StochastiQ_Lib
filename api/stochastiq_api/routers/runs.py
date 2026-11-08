@@ -6,6 +6,8 @@ from ..ansatz_refs import resolve_params
 from ..db import get_db
 from ..deps import ProjectAccess, require_role
 from ..events import record
+from ..ml.predictor import load_bundle
+from ..ml.service import NO_MODEL
 from ..models import Comment, Run
 from ..roles import MIN_ROLE
 from ..run_schemas import (
@@ -58,6 +60,8 @@ def launch_run(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"{MAX_ACTIVE_RUNS_PER_USER} runs au maximum en cours par utilisateur : attendez la fin d'un run.",
         )
+    if data.kind == "recommendation" and load_bundle(request.app.state.settings.models_dir) is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, NO_MODEL)
     params = resolve_params(db, access.project.id, data.kind, data.params.model_dump())
     run = Run(project_id=access.project.id, created_by=access.user.id, kind=data.kind, params=params)
     db.add(run)
