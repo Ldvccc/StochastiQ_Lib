@@ -143,3 +143,21 @@ def test_mesure_et_degradation_predite_sans_intervalle():
     candidat = {"key": "A", **{k: partielle[k] for k in ("value", "low", "high", "margin", "evidence")}}
     autre = {"key": "B", "value": 0.3, "evidence": "interval", "low": 0.25, "high": 0.35, "margin": None}
     assert decide([candidat, autre], 0.0588, 400)["verdict"] == "undetermined"
+
+
+def test_mesure_et_degradation_predite_avec_intervalle():
+    # TVD mesurée 0,0585, dégradation [0 ; 0,001], classique 0,0597 : l'intervalle est élargi de 0,1 × 0,0597 de chaque côté.
+    degradation_ok = prediction(0.0005, True, 0.01, low=0.0, high=0.001)
+    final = prediction(0.06, True, 0.05, 0.03, 0.09)
+    noisy = {"value": 0.0605, "low": 0.03, "high": 0.091, "interval_reliable": True}
+    mesure = {"run_id": 4, "tvd": 0.0585, "noisy_tvd": None}
+    item = _compared({"final_tvd": final, "degradation": degradation_ok, "noisy_tvd": noisy}, mesure, True, 0.0597)
+    assert item["evidence"] == "interval"
+    assert item["source"] == "measured_degradation_predicted"
+    assert item["low"] == pytest.approx(0.0585 + 0.0 - 0.00597)
+    assert item["high"] == pytest.approx(0.0585 + 0.001 + 0.00597)
+    candidat = {"key": "hardware_efficient", **{k: item[k] for k in ("value", "low", "high", "margin", "evidence")}}
+    autre = {"key": "rotation_only", "value": 0.3, "evidence": "interval", "low": 0.25, "high": 0.35, "margin": None}
+    verdict = decide([candidat, autre], 0.0597, 400)["verdict"]
+    assert verdict in ("equivalent", "undetermined")
+    assert verdict != "justified"  # sans l'élargissement, la borne haute 0,0595 < 0,0597 aurait donné « se justifie »

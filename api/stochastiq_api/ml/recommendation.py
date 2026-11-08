@@ -14,10 +14,13 @@ effectif et la règle de verdict (dérogation validée par l'auteur au jalon 8) 
 - ``margin`` (prédiction sans intervalle fiable) : marge de 2 × l'erreur
   absolue moyenne de validation du cas comparable ; « probably_justified » si
   valeur + marge < TVD classique, « probably_not_justified » si valeur − marge
-  > TVD classique, sinon « undetermined ». Pour une TVD mesurée combinée à une
-  dégradation prédite sans intervalle, la marge couvre aussi l'incertitude de
-  la mesure (une seule initialisation) : 0,1 × meilleure TVD classique + 2 ×
-  erreur moyenne de la dégradation.
+  > TVD classique, sinon « undetermined ».
+
+Une TVD mesurée combinée à une dégradation prédite garde l'incertitude de la
+mesure (une seule initialisation) : avec un intervalle de dégradation fiable,
+l'intervalle est élargi de 0,1 × meilleure TVD classique de chaque côté ; sans
+intervalle, la marge vaut 0,1 × meilleure TVD classique + 2 × erreur moyenne
+de la dégradation.
 
 Le verdict suit la preuve de l'ansatz classé premier (valeur la plus basse).
 Les ansatz dont l'intervalle effectif recoupe le sien lui sont
@@ -157,11 +160,13 @@ def _compared(prediction: dict, measured: dict | None, noisy: bool, classical_tv
     if measured is not None:  # TVD exacte mesurée, dégradation sous bruit prédite
         value = measured["tvd"] + degradation["value"]
         source = "measured_degradation_predicted"
+        # Incertitude de la mesure (une seule initialisation) : 0,1 × meilleure TVD classique de chaque côté.
+        measurement = RELATIVE_MARGIN * classical_tvd
         if degradation["interval_reliable"]:
-            return {"value": value, "low": measured["tvd"] + degradation["low"], "high": measured["tvd"] + degradation["high"],
+            return {"value": value, "low": measured["tvd"] + degradation["low"] - measurement,
+                    "high": measured["tvd"] + degradation["high"] + measurement,
                     "margin": None, "evidence": "interval", "source": source, "interval_message": None}
-        # Incertitude de la mesure (une seule initialisation) plus celle de la dégradation prédite.
-        margin = RELATIVE_MARGIN * classical_tvd + MAE_MARGIN_FACTOR * degradation["mae"]
+        margin = measurement + MAE_MARGIN_FACTOR * degradation["mae"]
         return {"value": value, "low": None, "high": None, "margin": margin,
                 "evidence": "margin", "source": source, "interval_message": degradation["interval_message"]}
     if not noisy:
