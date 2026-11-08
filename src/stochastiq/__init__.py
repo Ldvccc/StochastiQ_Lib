@@ -20,8 +20,8 @@ from .hardware import hardware_cost, list_topologies
 from .metrics import entangling_capability, expressibility, fidelity_histogram
 from .scaling import fit_decay, gradient_scaling
 from .noise import PROFILES as NOISE_PROFILES
-from .noise import noisy_probabilities, noisy_tvd, resolve_profile
-from .stats import circuit_stats
+from .noise import gate_count_fidelity, noisy_probabilities, noisy_tvd, resolve_profile, transpiled_gate_counts
+from .stats import circuit_features, circuit_stats
 from .training import distribution_metrics, train_qcbm
 
 __all__ = [
@@ -66,5 +66,8 @@ __all__ = [
     "noisy_probabilities",
     "noisy_tvd",
     "resolve_profile",
+    "transpiled_gate_counts",
+    "gate_count_fidelity",
+    "circuit_features",
 ]
 __version__ = "0.1.0"

@@ -88,6 +88,35 @@ def _apply_readout(probs: np.ndarray, n_qubits: int, readout: float) -> np.ndarr
     return tensor.reshape(-1)
 
 
+def _compile(ansatz: QuantumCircuit, topology: str, seed: int | None) -> QuantumCircuit:
+    """Transpilation commune au bruit et aux comptes de portes (portes cx, rz, sx et x)."""
+    coupling = _coupling_map(topology, ansatz.num_qubits)
+    return transpile(
+        ansatz, basis_gates=_BASIS_GATES, coupling_map=coupling, optimization_level=1, seed_transpiler=seed
+    )
+
+
+def transpiled_gate_counts(ansatz: QuantumCircuit, topology: str = "line", seed: int | None = 0) -> dict:
+    """Portes du circuit transpilé comme pour le bruit (paramètres laissés libres).
+
+    Retourne ``n1`` (portes sx et x, les seules à porter une erreur à 1 qubit),
+    ``n2`` (portes cx) et ``depth``. Ne demande pas qiskit-aer.
+    """
+    compiled = _compile(ansatz, topology, seed)
+    ops = compiled.count_ops()
+    return {"n1": int(ops.get("sx", 0) + ops.get("x", 0)), "n2": int(ops.get("cx", 0)), "depth": compiled.depth()}
+
+
+def gate_count_fidelity(counts: Mapping[str, int], profile: str | Mapping[str, float], n_qubits: int) -> float:
+    """Fidélité estimée par comptage des portes : (1 - p1)^n1 · (1 - p2)^n2 · (1 - lecture)^n.
+
+    Référence grossière (erreurs indépendantes, pas d'annulation) ; ``counts``
+    vient de ``transpiled_gate_counts``.
+    """
+    rates = resolve_profile(profile)
+    return float((1 - rates["p1"]) ** counts["n1"] * (1 - rates["p2"]) ** counts["n2"] * (1 - rates["readout"]) ** n_qubits)
+
+
 def noisy_probabilities(
     ansatz: QuantumCircuit,
     params,
@@ -105,11 +134,7 @@ def noisy_probabilities(
 
     rates = resolve_profile(profile)
     n_qubits = ansatz.num_qubits
-    coupling = _coupling_map(topology, n_qubits)
-    bound = ansatz.assign_parameters(np.asarray(params, dtype=float))
-    compiled = transpile(
-        bound, basis_gates=_BASIS_GATES, coupling_map=coupling, optimization_level=1, seed_transpiler=seed
-    )
+    compiled = _compile(ansatz.assign_parameters(np.asarray(params, dtype=float)), topology, seed)
     physical = compiled.layout.final_index_layout() if compiled.layout is not None else list(range(n_qubits))
     compiled.save_probabilities(physical)
     simulator = AerSimulator(method="density_matrix", noise_model=noise_model(rates), seed_simulator=seed)
