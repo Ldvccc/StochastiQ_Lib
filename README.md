@@ -64,7 +64,7 @@ Copy-Item .env.example .env              # ENV=prod impose un SECRET_KEY d'au mo
 docker compose up --build
 ```
 
-L'application web est servie sur http://localhost:5173 et l'API sur http://localhost:8000. La base SQLite et le modèle de prédiction (`/data/models`) sont conservés dans le volume `api-data`. **Au premier démarrage, le conteneur de l'API entraîne le modèle de prédiction** à partir de `data/results_grid.csv` (quelques minutes) avant de répondre : `/predict` fonctionne donc dès une installation neuve. Les démarrages suivants réutilisent le modèle du volume. Pour charger les données de démonstration dans le conteneur :
+L'application web est servie sur http://localhost:5173 et l'API sur http://localhost:8000. La base SQLite et le modèle de prédiction (`/data/models`) sont conservés dans le volume `api-data`. **Au premier démarrage, le conteneur de l'API entraîne le modèle de prédiction** à partir de `data/results_grid.csv` : comptez **environ 2 minutes** (103 et 106 s mesurées) **avant que l'API réponde** ; le front attend que l'API soit prête. `/predict` fonctionne donc dès une installation neuve. Les démarrages suivants réutilisent le modèle du volume. Pour charger les données de démonstration dans le conteneur :
 
 ```powershell
 docker compose exec api python /app/scripts/seed_demo.py
