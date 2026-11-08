@@ -81,6 +81,7 @@ def test_entrainement_existant_prime(model_client):
     assert item["value"] == pytest.approx(trained["result"]["metrics"]["tvd"])
     assert item["low"] is None and item["high"] is None  # une mesure n'a pas de « borne »
     assert "hardware_efficient" not in finished["result"]["decision"]["to_train"]
+    assert "hardware_efficient" not in finished["result"]["decision"]["open"]
     # Autre nombre de couches : l'entraînement ne compte pas.
     other = run(model_client, owner, project_id, params(problem_id, layers=2))
     assert other["params"]["existing"] == [None, None]

@@ -24,10 +24,12 @@ de la dégradation.
 
 Le verdict suit la preuve de l'ansatz classé premier (valeur la plus basse).
 Les ansatz dont l'intervalle effectif recoupe le sien lui sont
-« indistinguables ». Pour « undetermined », les ansatz à entraîner sont les
-mieux classés, sans entraînement, dont l'intervalle effectif contient la TVD
-classique, dans la limite du budget (budget // itérations par entraînement,
-au moins 1).
+« indistinguables ». Pour « undetermined », les ansatz encore ouverts sont
+ceux qui n'ont pas d'entraînement dans le projet (``trained`` faux) et dont
+l'intervalle effectif contient la TVD classique, par ordre de classement ; les
+ansatz à entraîner sont les premiers d'entre eux, dans la limite du budget
+(budget // itérations par entraînement, au moins 1). Un ansatz déjà entraîné,
+même si sa dégradation sous bruit est prédite, n'est jamais proposé.
 
 Les phrases sont écrites par le web (convention : phrases de lecture côté web).
 """
@@ -71,10 +73,13 @@ def decide(candidates: list[dict], classical_tvd: float, budget: int) -> dict:
     """Classement et verdict.
 
     ``candidates`` : dicts avec ``key``, ``value``, ``evidence`` (« measured »,
-    « interval » ou « margin »), ``low`` et ``high`` (preuve « interval ») et
-    ``margin`` (preuve « margin »). Retourne ``ranking`` (clés dans l'ordre),
+    « interval » ou « margin »), ``low`` et ``high`` (preuve « interval »),
+    ``margin`` (preuve « margin ») et ``trained`` (entraînement déjà fait dans
+    le projet ; faux par défaut). Retourne ``ranking`` (clés dans l'ordre),
     ``best``, ``evidence`` (celle du premier), ``indistinguishable`` (clés qui
-    recoupent le premier), ``verdict``, ``to_train`` et ``n_trainings``.
+    recoupent le premier), ``verdict``, ``open`` (ansatz encore ouverts, dans
+    l'ordre), ``to_train`` (les premiers, dans la limite du budget) et
+    ``n_trainings``.
     """
     if len(candidates) < 2:
         raise ValueError("Au moins deux ansatz sont nécessaires.")
@@ -87,16 +92,19 @@ def decide(candidates: list[dict], classical_tvd: float, budget: int) -> dict:
     indistinguishable = [c["key"] for c in items[1:] if overlaps(best, c)]
     n_trainings = max(1, budget // ITERATIONS_PER_TRAINING)
     verdict = verdict_for(best, classical_tvd)
-    to_train: list[str] = []
+    open_keys: list[str] = []
     if verdict == "undetermined":
-        open_items = [c for c in items if c["evidence"] != "measured" and c["low"] <= classical_tvd <= c["high"]]
-        to_train = [c["key"] for c in open_items[:n_trainings]]
+        open_keys = [
+            c["key"] for c in items if not c.get("trained", False) and c["low"] <= classical_tvd <= c["high"]
+        ]
+    to_train = open_keys[:n_trainings]
     return {
         "ranking": [c["key"] for c in items],
         "best": best["key"],
         "evidence": best["evidence"],
         "indistinguishable": indistinguishable,
         "verdict": verdict,
+        "open": open_keys,
         "to_train": to_train,
         "n_trainings": n_trainings,
     }
@@ -247,7 +255,7 @@ def run_recommendation(p: dict, models_dir: str | None) -> dict:
             }
         )
     candidates = [
-        {key: i[key] for key in ("key", "value", "low", "high", "margin", "evidence")}
+        {**{key: i[key] for key in ("key", "value", "low", "high", "margin", "evidence")}, "trained": i["measured"] is not None}
         for i in items
     ]
     return {
