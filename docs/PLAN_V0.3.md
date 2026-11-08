@@ -112,7 +112,7 @@ Ce document décrit ma lecture de la mission v0.3, jalon par jalon, avec les fic
 ## Jalon 8 : intégration et release (`feature/m14-release`)
 
 - Script de démo enrichi.
-- Documentation : README, API, ROLES, METRIQUES, ARCHITECTURE, CHANGELOG 0.3.0 (avec la dérogation sur le dashboard) et les deux rapports à jour.
+- Documentation : README, API, ROLES, METRIQUES, ARCHITECTURE, CHANGELOG 0.3.0 (avec la dérogation sur le dashboard et celle sur le critère de l'IA, validée par l'auteur au jalon 6 : critère séparé entre valeur centrale et intervalle, calibrage conforme des quantiles ; voir docs/PREDICTION.md) et les deux rapports à jour.
 - Versions.
 - `docker compose up --build` vérifié pour de vrai, modèle présent dans le volume.
 - Fusion, puis tag local `v0.3.0`.
