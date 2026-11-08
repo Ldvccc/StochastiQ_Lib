@@ -1,4 +1,7 @@
-// Test de bout en bout : démarre une vraie API (base SQLite temporaire) et le front.
+// Test de bout en bout : démarre une vraie API (base SQLite et dossier de modèles
+// temporaires) et le front. Avant l'API, un modèle de prédiction réduit (lignes à
+// 1 couche de data/results_grid.csv) est entraîné dans le dossier temporaire :
+// les parcours ne dépendent pas d'un modèle présent sur le poste.
 // Lancement : npx playwright test (depuis web/, après npx playwright install chromium).
 import { defineConfig } from "@playwright/test";
 import os from "node:os";
@@ -6,10 +9,14 @@ import path from "node:path";
 
 const API_PORT = 8010;
 const WEB_PORT = 5180;
-const database = path.join(os.tmpdir(), `stochastiq-e2e-${Date.now()}.db`).replace(/\\/g, "/");
-// Commande uvicorn du venv du dépôt ; E2E_UVICORN permet d'en indiquer une autre.
-const uvicorn =
-  process.env.E2E_UVICORN ?? (process.platform === "win32" ? "..\\.venv\\Scripts\\uvicorn" : "../.venv/bin/uvicorn");
+const stamp = Date.now();
+const database = path.join(os.tmpdir(), `stochastiq-e2e-${stamp}.db`).replace(/\\/g, "/");
+const modelsDir = path.join(os.tmpdir(), `stochastiq-e2e-models-${stamp}`);
+// Exécutables du venv du dépôt ; E2E_UVICORN et E2E_PYTHON permettent d'en indiquer d'autres.
+const venv = process.platform === "win32" ? "..\\.venv\\Scripts\\" : "../.venv/bin/";
+const uvicorn = process.env.E2E_UVICORN ?? `${venv}uvicorn`;
+const python = process.env.E2E_PYTHON ?? `${venv}python`;
+const train = `${python} ../scripts/train_predictor.py --csv ../data/results_grid.csv --layers 1 --models-dir "${modelsDir}"`;
 
 export default defineConfig({
   testDir: "e2e",
@@ -21,12 +28,19 @@ export default defineConfig({
   use: { baseURL: `http://localhost:${WEB_PORT}`, locale: "fr-FR" },
   webServer: [
     {
-      command: `${uvicorn} stochastiq_api.main:app --port ${API_PORT}`,
+      command: `${train} && ${uvicorn} stochastiq_api.main:app --port ${API_PORT}`,
       cwd: "../api",
       url: `http://127.0.0.1:${API_PORT}/health`,
-      env: { DATABASE_URL: `sqlite:///${database}`, CORS_ORIGIN: `http://localhost:${WEB_PORT}`, ENV: "dev" },
+      env: {
+        DATABASE_URL: `sqlite:///${database}`,
+        MODELS_DIR: modelsDir,
+        CORS_ORIGIN: `http://localhost:${WEB_PORT}`,
+        ENV: "dev",
+        PYTHONIOENCODING: "utf-8",
+      },
       reuseExistingServer: false,
-      timeout: 120_000,
+      // Entraînement du modèle réduit (environ une minute) puis démarrage de l'API.
+      timeout: 300_000,
     },
     {
       command: `npx vite --port ${WEB_PORT} --strictPort`,

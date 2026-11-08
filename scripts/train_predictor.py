@@ -1,7 +1,7 @@
 """Entraînement et validation de l'IA de prédiction (voir docs/PREDICTION.md).
 
 Lit les lignes éligibles de la base de résultats (grille de référence et
-projets qui partagent leurs résultats), lance les trois validations pour
+projets qui partagent leurs résultats), lance les quatre validations pour
 chaque cible, puis entraîne les modèles sur toutes les lignes et les écrit
 dans MODELS_DIR (``predictor.joblib``, plus ``predictor_report.json``, sans
 les modèles).
@@ -11,6 +11,10 @@ Utilisation, depuis la racine du dépôt (PowerShell) :
     .venv\\Scripts\\python scripts\\train_predictor.py
     .venv\\Scripts\\python scripts\\train_predictor.py --database-url sqlite:///./data/results.db
     .venv\\Scripts\\python scripts\\train_predictor.py --csv data\\results_grid.csv --models-dir api\\models
+
+Modèle réduit (lignes à 1 couche seulement), pour les tests de bout en bout :
+
+    .venv\\Scripts\\python scripts\\train_predictor.py --csv data\\results_grid.csv --layers 1 --models-dir <dossier>
 """
 
 import argparse
@@ -36,6 +40,9 @@ def main() -> int:
     parser.add_argument("--database-url", default=None, help="Base de résultats (par défaut : DATABASE_URL).")
     parser.add_argument("--csv", default=None, help="Export CSV de la base, à la place de la base.")
     parser.add_argument("--models-dir", default=None, help="Dossier de sortie (par défaut : MODELS_DIR).")
+    parser.add_argument(
+        "--layers", type=int, nargs="+", default=None, help="Ne garde que ces nombres de couches (modèle réduit, pour les tests)."
+    )
     args = parser.parse_args()
 
     settings = Settings()
@@ -46,6 +53,8 @@ def main() -> int:
         upgrade_database(database_url)
         with make_sessionmaker(make_engine(database_url))() as db:
             frame = results_frame(db)
+    if args.layers:
+        frame = frame[frame["layers"].isin(args.layers)]
     print(f"{len(frame)} lignes éligibles.")
 
     bundle = train_predictor(frame, stochastiq.__version__)

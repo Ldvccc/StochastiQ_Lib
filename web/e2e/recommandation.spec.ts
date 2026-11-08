@@ -1,7 +1,7 @@
 // Parcours v0.3 : problème de référence, ansatz personnalisé, entraînement,
 // recommandation, rapport imprimable, puis vérification à 390 px de large.
-// L'API doit trouver un modèle de prédiction dans MODELS_DIR (par défaut api/models,
-// produit par scripts/train_predictor.py) ; sinon la recommandation répond 409.
+// La configuration (playwright.config.ts) entraîne un modèle de prédiction réduit dans un
+// MODELS_DIR temporaire avant de démarrer l'API.
 import { expect, test, type Page } from "@playwright/test";
 
 const PASSWORD = "motdepasse-solide";
