@@ -5,9 +5,22 @@ import { api } from "../api/client";
 import { FidelityHistogram, histogramRows, type Histogram } from "../components/charts";
 import { ErrorState, GuardedButton } from "../components/common";
 import { useProject } from "../components/ProjectContext";
-import { CommentsPanel, CsvButton, MetricCard, NumberField, RunStatusBanner, useAnsatzOptions, type AnsatzOption } from "../components/science";
+import {
+  CommentsPanel,
+  CsvButton,
+  MetricCard,
+  NO_NOISE_CHOICE,
+  NoiseProfileField,
+  noiseErrors,
+  noiseProfileValue,
+  NumberField,
+  RunStatusBanner,
+  useAnsatzOptions,
+  type AnsatzOption,
+  type NoiseChoice,
+} from "../components/science";
 import { formatMetric, formatPercent } from "../lib/format";
-import { LOW_SAMPLES_THRESHOLD, LOW_SAMPLES_WARNING, refLabel } from "../lib/reading";
+import { degradationSentence, LOW_SAMPLES_THRESHOLD, LOW_SAMPLES_WARNING, refLabel, type NoiseProfile, type NoiseTvdResult } from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
 
 export interface DiagnosticForm {
@@ -32,6 +45,7 @@ interface DiagnosticResult {
     n_parameters: number;
   };
   histogram: Histogram;
+  noise?: NoiseTvdResult | null;
 }
 
 export function validateDiagnostic(form: DiagnosticForm): Record<string, string> {
@@ -88,11 +102,12 @@ export function DiagnosticPage() {
   const runId = params.get("run") ? Number(params.get("run")) : null;
   const { run, error: pollError } = useRunPolling<DiagnosticResult>(project.id, runId);
   const [form, setForm] = useState<DiagnosticForm>({ ansatz: "cat:hardware_efficient", n_qubits: 4, layers: 3, n_samples: 1000, seed: 0, observable: "Z0" });
+  const [noise, setNoise] = useState<NoiseChoice>(NO_NOISE_CHOICE);
   const [error, setError] = useState<string | null>(null);
   const [pinMessage, setPinMessage] = useState<string | null>(null);
   const options: AnsatzOption[] = catalog.data ?? [];
   const option = options.find((o) => o.value === form.ansatz);
-  const errors = validateDiagnostic(form);
+  const errors = { ...validateDiagnostic(form), ...noiseErrors(noise) };
   if (!errors.n_qubits && option?.fixedQubits && form.n_qubits !== option.fixedQubits) {
     errors.n_qubits = `Cet ansatz fixe ${option.fixedQubits} qubits.`;
   }
@@ -104,7 +119,7 @@ export function DiagnosticPage() {
     setError(null);
     setPinMessage(null);
     try {
-      const created = await launchRun(project.id, "diagnostic", { ...form, ansatz: option!.ref });
+      const created = await launchRun(project.id, "diagnostic", { ...form, ansatz: option!.ref, noise_profile: noiseProfileValue(noise) });
       setParams({ run: String(created.id) });
     } catch (err) {
       setError((err as Error).message);
@@ -131,6 +146,9 @@ export function DiagnosticPage() {
       <form className="card" onSubmit={submit} aria-label="Paramètres du diagnostic">
         {catalog.error && <ErrorState message={catalog.error} onRetry={catalog.reload} />}
         <DiagnosticFormFields form={form} setForm={setForm} errors={errors} ansatzOptions={options} />
+        <div className="row" style={{ marginTop: 12 }}>
+          <NoiseProfileField label="Dégradation sous bruit (facultative)" choice={noise} onChange={setNoise} errors={errors} />
+        </div>
         {form.n_samples < LOW_SAMPLES_THRESHOLD && <div className="info" style={{ marginTop: 16 }}>{LOW_SAMPLES_WARNING}</div>}
         <div style={{ marginTop: 16 }}>
           <GuardedButton type="submit" allowed={can("run")} reason={reason("run")} disabled={invalid || options.length === 0}>
@@ -169,6 +187,18 @@ export function DiagnosticPage() {
               }
             />
           </div>
+          {result.noise && (
+            <section className="card" aria-labelledby="degradation-bruit">
+              <h2 id="degradation-bruit">Dégradation sous bruit</h2>
+              <div className="num" style={{ fontSize: "1.8rem" }}>
+                {formatMetric(result.noise.mean_tvd)}
+              </div>
+              <p>{degradationSentence(result.noise, (run!.params as { noise_profile: NoiseProfile }).noise_profile)}</p>
+              <p className="muted">
+                Circuit transpilé sur une ligne de {runParams.n_qubits} qubits (portes cx, rz, sx et x), simulé en matrice densité ; rz est supposée sans erreur.
+              </p>
+            </section>
+          )}
           <section className="card" aria-labelledby="histogramme">
             <h2 id="histogramme">Histogramme des fidélités</h2>
             <FidelityHistogram histogram={result.histogram} />

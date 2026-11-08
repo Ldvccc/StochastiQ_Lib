@@ -6,9 +6,31 @@ import type { ProblemSummary } from "../api/types";
 import { bitstring, DistributionChart, LossChart } from "../components/charts";
 import { ErrorState, GuardedButton, Loading } from "../components/common";
 import { useProject } from "../components/ProjectContext";
-import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzOptions } from "../components/science";
+import {
+  CommentsPanel,
+  CsvButton,
+  NO_NOISE_CHOICE,
+  NoiseProfileField,
+  noiseErrors,
+  noiseProfileValue,
+  NumberField,
+  RunStatusBanner,
+  useAnsatzOptions,
+  type NoiseChoice,
+} from "../components/science";
 import { formatFr, formatMetric } from "../lib/format";
-import { BASELINE_LABELS, LOSS_LABELS, OPTIMIZER_LABELS, refLabel, trainingSentence, type TrainingResult } from "../lib/reading";
+import {
+  BASELINE_LABELS,
+  LOSS_LABELS,
+  NOISE_TOPOLOGY_LABELS,
+  noiseEvaluationSentence,
+  OPTIMIZER_LABELS,
+  profileLabel,
+  refLabel,
+  trainingSentence,
+  type NoiseTopology,
+  type TrainingResult,
+} from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
 import { useAsync } from "../lib/useAsync";
 
@@ -23,6 +45,8 @@ export interface TrainingForm {
   exact: boolean;
   shots: number;
   seed: number;
+  noise: NoiseChoice; // évaluation finale sous bruit (facultative)
+  noiseTopology: NoiseTopology;
 }
 
 /** Erreurs du formulaire d'entraînement (mêmes bornes que l'API). */
@@ -36,12 +60,15 @@ export function trainingErrors(form: TrainingForm, problemQubits: number | null,
   if (problemQubits !== null && fixedQubits !== null && problemQubits !== fixedQubits) {
     errors.ansatz = `Cet ansatz fixe ${fixedQubits} qubits, le problème en a ${problemQubits}.`;
   }
-  return errors;
+  return { ...errors, ...noiseErrors(form.noise) };
 }
 
 function ResultTable({ result }: { result: TrainingResult }) {
   const rows = [
     { label: "Ansatz entraîné", metrics: result.metrics, params: result.n_parameters },
+    ...(result.noise
+      ? [{ label: `Ansatz entraîné, sous bruit ${profileLabel(result.noise.profile)}`, metrics: result.noise.metrics, params: result.n_parameters }]
+      : []),
     ...Object.entries(result.baselines).map(([name, b]) => ({ label: `Référence : ${BASELINE_LABELS[name]}`, metrics: b.metrics, params: b.n_parameters })),
   ];
   return (
@@ -90,6 +117,8 @@ export function TrainingPage() {
     exact: true,
     shots: 1000,
     seed: 0,
+    noise: NO_NOISE_CHOICE,
+    noiseTopology: "line",
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -114,6 +143,7 @@ export function TrainingPage() {
         learning_rate: form.learning_rate,
         shots: form.exact ? null : form.shots,
         seed: form.seed,
+        evaluate_noise: form.noise.mode === "none" ? null : { profile: noiseProfileValue(form.noise), topology: form.noiseTopology },
       });
       setParams({ run: String(created.id) });
     } catch (err) {
@@ -191,6 +221,20 @@ export function TrainingPage() {
           <NumberField label="Tirages" value={form.shots} min={100} max={100000} onChange={set("shots")} disabled={form.exact} error={errors.shots} note={form.exact ? "Sans objet en mode exact." : undefined} />
           <NumberField label="Graine" value={form.seed} min={0} max={1_000_000} onChange={set("seed")} error={errors.seed} />
         </div>
+        <fieldset className="row" style={{ marginTop: 12, border: 0, padding: 0 }}>
+          <legend className="muted" style={{ marginBottom: 4 }}>Évaluation finale sous bruit (facultative, mêmes paramètres appris)</legend>
+          <NoiseProfileField label="Bruit" choice={form.noise} onChange={(noise) => setForm({ ...form, noise })} errors={errors} />
+          <label>
+            Topologie
+            <select value={form.noiseTopology} disabled={form.noise.mode === "none"} onChange={(e) => setForm({ ...form, noiseTopology: e.target.value as NoiseTopology })}>
+              {Object.entries(NOISE_TOPOLOGY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label[0].toUpperCase() + label.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </fieldset>
         <div style={{ marginTop: 16 }}>
           <GuardedButton type="submit" allowed={can("run")} reason={reason("run")} disabled={invalid}>
             Lancer l'entraînement
@@ -209,6 +253,7 @@ export function TrainingPage() {
             <h2 id="comparaison-classique">Quantique contre classique</h2>
             <ResultTable result={result} />
             <p>{trainingSentence(result, (runParams.shots as number | null) ?? null)}</p>
+            {result.noise && <p>{noiseEvaluationSentence(result)}</p>}
           </section>
           <section className="card" aria-labelledby="courbe-perte">
             <h2 id="courbe-perte">Courbe de perte</h2>
@@ -226,6 +271,7 @@ export function TrainingPage() {
                 learned: result.probabilities[i],
                 independent: result.baselines.independent.probabilities[i],
                 chow_liu: result.baselines.chow_liu.probabilities[i],
+                ...(result.noise ? { learned_noisy: result.noise.probabilities[i] } : {}),
               }))}
               params={{ ...runParams, target: undefined }}
             />

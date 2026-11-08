@@ -7,7 +7,7 @@ import { Empty, ErrorState, GuardedButton, Loading, StatusPill } from "../compon
 import { useProject } from "../components/ProjectContext";
 import { CommentsPanel, CsvButton, NumberField, RunStatusBanner, useAnsatzOptions, useTopologies } from "../components/science";
 import { formatDateTime, formatFactor } from "../lib/format";
-import { ansatzLabel, refLabel } from "../lib/reading";
+import { ansatzLabel, NOISE_TOPOLOGY_LABELS, profileLabel, refLabel, type NoiseProfile, type NoiseRates, type NoiseTopology } from "../lib/reading";
 import { boundErrors, launchRun, useRunPolling } from "../lib/runs";
 import { useAsync } from "../lib/useAsync";
 import { KIND_LABELS } from "./ProjectPage";
@@ -331,17 +331,27 @@ const PARAM_LABELS: Record<string, string> = {
   max_iter: "Itérations",
   learning_rate: "Pas d'apprentissage",
   shots: "Tirages",
+  profile: "Profil de bruit",
+  noise_profile: "Bruit",
+  evaluate_noise: "Évaluation sous bruit",
 };
 
 function paramValue(value: unknown): string {
+  if (value === null || value === undefined) return "aucun";
   if (Array.isArray(value)) return value.map(refLabel).join(", ");
+  if (typeof value === "object" && "p1" in value) return profileLabel(value as NoiseRates);
+  if (typeof value === "object" && "profile" in value) {
+    const evaluation = value as { profile: NoiseProfile; topology: NoiseTopology };
+    return `${profileLabel(evaluation.profile)}, topologie ${NOISE_TOPOLOGY_LABELS[evaluation.topology]}`;
+  }
   if (typeof value === "object" && value !== null) return refLabel(value);
   if (typeof value === "boolean") return value ? "oui" : "non";
   if (typeof value === "string") return ansatzLabel(value);
   return String(value);
 }
 
-const SCREENS: Record<RunKind, string> = {
+// Le run « noise » (TVD idéal / bruité) n'a pas d'écran dédié : son résultat s'affiche ici, en JSON.
+const SCREENS: Partial<Record<RunKind, string>> = {
   diagnostic: "diagnostic",
   compare: "comparateur",
   scaling: "plateau-sterile",
@@ -359,7 +369,7 @@ export function RunDetailPage() {
   if (error) return <ErrorState message={error} />;
   if (!run) return <Loading label="Chargement du run" />;
   const screen = SCREENS[run.kind];
-  const resultLink = screen.endsWith("&") ? `/projects/${project.id}/${screen}run=${run.id}` : `/projects/${project.id}/${screen}?run=${run.id}`;
+  const resultLink = !screen ? null : screen.endsWith("&") ? `/projects/${project.id}/${screen}run=${run.id}` : `/projects/${project.id}/${screen}?run=${run.id}`;
   return (
     <>
       <h1>
@@ -394,7 +404,7 @@ export function RunDetailPage() {
             </tr>
           </tbody>
         </table>
-        {run.status === "done" && (
+        {run.status === "done" && resultLink && (
           <p>
             <Link to={resultLink}>Voir le résultat dans l'écran {KIND_LABELS[run.kind]}</Link>
           </p>
