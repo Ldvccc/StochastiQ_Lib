@@ -20,7 +20,7 @@ Samples = Annotated[int, Field(ge=50, le=5000)]
 Seed = Annotated[int, Field(ge=0, le=1_000_000)]
 Observable = Literal["Z0", "Zmean", "Zall"]
 
-RunKind = Literal["diagnostic", "compare", "scaling", "hardware"]
+RunKind = Literal["diagnostic", "compare", "scaling", "hardware", "training"]
 RunStatus = Literal["pending", "running", "done", "failed"]
 
 
@@ -90,6 +90,27 @@ class HardwareParams(Input):
     seed: Seed = 0
 
 
+class TrainingParams(Input):
+    """Entraînement d'un ansatz sur un problème du projet (sa distribution cible)."""
+
+    problem_id: Annotated[int, Field(ge=1)]
+    ansatz: AnsatzRef
+    layers: Layers
+    loss: Literal["kl", "mmd", "tvd"] = "kl"
+    optimizer: Literal["adam", "spsa", "cobyla"] = "adam"
+    max_iter: Annotated[int, Field(ge=10, le=1000)] = 200
+    learning_rate: Annotated[float, Field(gt=0, le=5)] = 0.1
+    # None : probabilités exactes ; sinon, estimation par tirages pendant l'entraînement.
+    shots: Annotated[int, Field(ge=100, le=100_000)] | None = None
+    seed: Seed = 0
+
+    @model_validator(mode="after")
+    def _tvd_not_with_adam(self) -> "TrainingParams":
+        if self.loss == "tvd" and self.optimizer == "adam":
+            raise ValueError("La TVD n'est pas dérivable : avec la perte « tvd », choisissez SPSA ou COBYLA.")
+        return self
+
+
 class DiagnosticRunIn(Input):
     kind: Literal["diagnostic"]
     params: DiagnosticParams
@@ -110,8 +131,13 @@ class HardwareRunIn(Input):
     params: HardwareParams
 
 
+class TrainingRunIn(Input):
+    kind: Literal["training"]
+    params: TrainingParams
+
+
 RunIn = Annotated[
-    Union[DiagnosticRunIn, CompareRunIn, ScalingRunIn, HardwareRunIn], Field(discriminator="kind")
+    Union[DiagnosticRunIn, CompareRunIn, ScalingRunIn, HardwareRunIn, TrainingRunIn], Field(discriminator="kind")
 ]
 
 
