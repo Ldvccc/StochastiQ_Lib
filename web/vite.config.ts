@@ -9,6 +9,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // Le parcours de bout en bout (e2e/) relève de Playwright, pas de Vitest.
+    include: ["src/**/*.test.{ts,tsx}"],
+    testTimeout: 15_000,
     css: false,
   },
 });

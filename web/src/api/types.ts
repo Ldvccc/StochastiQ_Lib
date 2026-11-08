@@ -138,3 +138,33 @@ export interface Topology {
   name: string;
   label: string;
 }
+
+export interface ProblemFeatures {
+  n_qubits: number;
+  entropy: number;
+  support_fraction: number;
+  max_probability: number;
+  mean_mutual_information: number;
+}
+
+export interface ProblemSummary {
+  id: number;
+  name: string;
+  n_qubits: number;
+  origin: "reference" | "csv";
+  source_params: Record<string, unknown>;
+  features: ProblemFeatures;
+  created_by: number | null;
+  created_at: string;
+}
+
+export interface Problem extends ProblemSummary {
+  probabilities: number[];
+}
+
+export interface DistributionInfo {
+  name: string;
+  label: string;
+  random: boolean;
+  qubits: number[];
+}

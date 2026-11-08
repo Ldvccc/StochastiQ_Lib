@@ -6,6 +6,7 @@ import { ProjectProvider, useProject } from "./ProjectContext";
 
 const PROJECT_NAV = [
   { to: "", label: "Projet", end: true },
+  { to: "problemes", label: "Problèmes" },
   { to: "diagnostic", label: "Diagnostic" },
   { to: "comparateur", label: "Comparateur" },
   { to: "ansatz", label: "Ansatz" },

@@ -11,6 +11,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { TeamPage } from "./pages/TeamPage";
 
 // Écrans scientifiques chargés à la demande : ils embarquent les graphiques (Recharts).
+const ProblemsPage = lazy(() => import("./pages/ProblemsPage").then((m) => ({ default: m.ProblemsPage })));
 const DiagnosticPage = lazy(() => import("./pages/DiagnosticPage").then((m) => ({ default: m.DiagnosticPage })));
 const ComparePage = lazy(() => import("./pages/ComparePage").then((m) => ({ default: m.ComparePage })));
 const AnsatzPage = lazy(() => import("./pages/AnsatzPage").then((m) => ({ default: m.AnsatzPage })));
@@ -48,6 +49,7 @@ export function AppRoutes() {
         >
           <Route index element={<ProjectPage />} />
           <Route path="equipe" element={<TeamPage />} />
+          <Route path="problemes" element={<Screen><ProblemsPage /></Screen>} />
           <Route path="diagnostic" element={<Screen><DiagnosticPage /></Screen>} />
           <Route path="comparateur" element={<Screen><ComparePage /></Screen>} />
           <Route path="ansatz" element={<Screen><AnsatzPage /></Screen>} />

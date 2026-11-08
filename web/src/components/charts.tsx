@@ -84,6 +84,37 @@ export function FidelityHistogram({ histogram, width }: { histogram: Histogram; 
   );
 }
 
+// ---- Distribution d'un problème ----
+
+/** Chaîne de bits de l'indice (qubit n-1 à gauche, convention Qiskit). */
+export function bitstring(index: number, nQubits: number): string {
+  return index.toString(2).padStart(nQubits, "0");
+}
+
+export function DistributionChart({ probabilities, width, compare }: { probabilities: number[]; width?: number; compare?: { label: string; values: number[] } }) {
+  const nQubits = Math.log2(probabilities.length);
+  const data = probabilities.map((p, i) => ({ state: bitstring(i, nQubits), probability: p, other: compare?.values[i] }));
+  const showTicks = nQubits <= 4;
+  return (
+    <Frame width={width} height={280}>
+      <ComposedChart data={data} width={width} height={280} margin={{ top: 10, right: 20, bottom: 24, left: 10 }} barCategoryGap={1}>
+        <CartesianGrid vertical={false} stroke={COLORS.line} />
+        <XAxis
+          dataKey="state"
+          tick={showTicks ? AXIS : false}
+          interval={0}
+          label={{ value: showTicks ? "État (qubit n-1 à gauche)" : `${probabilities.length} états (qubit n-1 à gauche)`, position: "insideBottom", offset: -12, fill: COLORS.inkMuted }}
+        />
+        <YAxis tickFormatter={decimalTick} tick={AXIS} />
+        <Tooltip formatter={(value: number) => formatMetric(value)} labelFormatter={(state: string) => `État ${state}`} />
+        {compare && <Legend verticalAlign="top" />}
+        <Bar dataKey="probability" name={compare ? "Cible" : "Probabilité"} fill={COLORS.violet} isAnimationActive={false} />
+        {compare && <Line dataKey="other" name={compare.label} stroke={COLORS.ink} strokeWidth={2} dot={false} isAnimationActive={false} />}
+      </ComposedChart>
+    </Frame>
+  );
+}
+
 // ---- Nuage expressibilité / variance active ----
 
 export function ParetoScatter({ rows, width }: { rows: CompareRow[]; width?: number }) {
