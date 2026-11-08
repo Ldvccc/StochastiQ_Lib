@@ -571,4 +571,5 @@ Voir le rapport final de la mission v0.3 (dans la conversation) et `git log --on
 - **Référence classique plus forte** : mélange de lois, ou petite machine de Boltzmann. Les références actuelles (marginales indépendantes, arbre de Chow-Liu) sont **simples** : battre l'arbre de Chow-Liu ne prouve pas un avantage sur les méthodes classiques en général.
 - **Ansatz sans intrication** : calculer leur valeur directement (meilleure distribution produit, comme la référence « marginales indépendantes ») plutôt que la prédire. Aujourd'hui, la borne basse prédite de RotationOnly peut descendre à 0,25 alors que la théorie interdit de descendre sous environ 0,37 sur le cas observé.
 - **Grille** : entraîner chaque configuration avec plusieurs graines, pour limiter l'effet des minima locaux.
+- **Ansatz déjà entraîné sans bruit** : quand la recommandation demande un profil de bruit, proposer « évaluer sous bruit » avec les paramètres appris, sans réentraîner, au lieu de ne rien proposer. La dégradation passe alors de prédite à mesurée.
 
