@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import create_project, register
-from stochastiq_api.jobs import ORPHAN_MESSAGE
+from stochastiq_api.jobs import ORPHAN_MESSAGE, format_duration
 from stochastiq_api.main import create_app
 from stochastiq_api.models import Run
 
@@ -140,7 +140,16 @@ def test_duree_maximale_depassee(settings):
         run_id = launch(client, owner, project_id, "diagnostic", {**SMALL["diagnostic"], "n_samples": 5000}).json()["id"]
         run = wait_run(client, owner, project_id, run_id, timeout=60)
     assert run["status"] == "failed"
-    assert "Durée maximale dépassée" in run["error"]
+    # Message construit à partir de run_timeout_seconds, en notation française.
+    assert run["error"] == "Durée maximale dépassée (0,5 seconde)."
+
+
+@pytest.mark.parametrize(
+    "seconds, text",
+    [(0.5, "0,5 seconde"), (1, "1 seconde"), (30, "30 secondes"), (60, "1 minute"), (90, "1,5 minute"), (600, "10 minutes")],
+)
+def test_format_de_la_duree(seconds, text):
+    assert format_duration(seconds) == text
 
 
 def test_orphelins_au_demarrage(settings):
