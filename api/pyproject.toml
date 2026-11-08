@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stochastiq-api"
-version = "0.2.0"
+version = "0.3.0"
 description = "API web du prototype StochastiQ (comptes, projets, rôles, runs)."
 requires-python = ">=3.10"
 # La bibliothèque stochastiq s'installe à part, depuis la racine du dépôt

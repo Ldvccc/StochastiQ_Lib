@@ -24,7 +24,7 @@ describe("ansatz du client", () => {
     const params = csvParams({ ansatz: { custom: { name: "QASM", content: "OPENQASM 3.0;\nqubit[2] q;" } }, n_qubits: 2 });
     expect(params.ansatz).toBe("QASM (personnalisé)");
     const csv = toCsv([{ a: 1 }], { note: "ligne 1\nligne 2", ...params });
-    expect(csv.split("\n")[0]).toBe("# note=ligne 1 ligne 2; ansatz=QASM (personnalisé); n_qubits=2; version=0.2.0");
+    expect(csv.split("\n")[0]).toBe("# note=ligne 1 ligne 2; ansatz=QASM (personnalisé); n_qubits=2; version=0.3.0");
     expect(csvParams({ ansatz: ["brick_wall", { custom: { name: "B" } }] }).ansatz).toBe("BrickWall + B (personnalisé)");
   });
 

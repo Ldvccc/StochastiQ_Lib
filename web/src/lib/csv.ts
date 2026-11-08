@@ -4,7 +4,7 @@
 import { refLabel } from "./reading";
 
 export const CSV_LABEL = "Télécharger en CSV";
-export const APP_VERSION = "0.2.0";
+export const APP_VERSION = "0.3.0";
 
 function cell(value: unknown): string {
   if (value === null || value === undefined) return "";
