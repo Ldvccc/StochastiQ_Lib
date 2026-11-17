@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stochastiq-api"
+version = "0.3.0"
+description = "API web du prototype StochastiQ (comptes, projets, rôles, runs)."
+requires-python = ">=3.10"
+# La bibliothèque stochastiq s'installe à part, depuis la racine du dépôt
+# (pip install -e . puis pip install -e ./api) : l'API l'importe, jamais l'inverse.
+dependencies = [
+    "stochastiq",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "argon2-cffi>=23.1",
+    "pyjwt>=2.8",
+    "email-validator>=2.1",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    # Utilisé par scripts/seed_demo.py (TestClient de FastAPI), y compris dans l'image Docker.
+    "httpx>=0.27",
+    # OpenQASM 3 pour les ansatz du client.
+    "qiskit_qasm3_import>=0.5",
+    # Bruit simulé (stochastiq.noise), en matrice densité.
+    "qiskit-aer>=0.15",
+    # IA de prédiction (stochastiq_api.ml), propre à l'API : la bibliothèque n'en dépend pas.
+    "scikit-learn>=1.4",
+    "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+include = ["stochastiq_api*"]
+
+[tool.setuptools.package-data]
+stochastiq_api = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

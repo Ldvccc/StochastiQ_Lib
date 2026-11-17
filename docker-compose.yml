@@ -1,0 +1,36 @@
+# Lancement du prototype : docker compose up --build
+# Variables lues dans .env (copier .env.example). Le front est servi sur
+# http://localhost:5173 et l'API sur http://localhost:8000.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # La base SQLite vit dans le volume, quelle que soit la valeur de .env.
+      DATABASE_URL: sqlite:////data/stochastiq.db
+      # Modèle de prédiction (scripts/train_predictor.py), dans le même volume.
+      MODELS_DIR: /data/models
+    volumes:
+      - api-data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: web
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  api-data:

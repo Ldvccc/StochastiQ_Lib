@@ -1,0 +1,14 @@
+.git
+.venv
+**/__pycache__
+**/*.egg-info
+**/*.db
+.env
+web
+dashboard
+examples
+tests
+docs
+# Modèles locaux : le conteneur entraîne le sien dans le volume.
+models
+api/models

@@ -1,0 +1,441 @@
+// Phrases de lecture : copie fidèle des règles du dashboard Streamlit (dashboard/ui.py).
+// Aucune valeur n'est inventée : tout vient des résultats de l'API.
+
+import { formatFr, formatMetric } from "./format";
+
+export const ANSATZ_LABELS: Record<string, string> = {
+  basic_entangler: "BasicEntangler",
+  strongly_entangling: "StronglyEntangling",
+  hardware_efficient: "HardwareEfficient",
+  rotation_only: "RotationOnly",
+  all_to_all: "AllToAll",
+  brick_wall: "BrickWall",
+  data_reuploading: "DataReuploading",
+};
+
+export function ansatzLabel(name: string): string {
+  return ANSATZ_LABELS[name] ?? name;
+}
+
+/** Libellé d'un ansatz dans les paramètres d'un run : nom du catalogue ou ansatz personnalisé. */
+export function refLabel(ref: unknown): string {
+  if (typeof ref === "string") return ansatzLabel(ref);
+  const custom = (ref as { custom?: { name?: string } } | null)?.custom;
+  if (custom?.name) return `${custom.name} (personnalisé)`;
+  const id = (ref as { custom_id?: number } | null)?.custom_id;
+  return id !== undefined ? `Ansatz personnalisé n° ${id}` : String(ref);
+}
+
+export const LOW_SAMPLES_THRESHOLD = 1000;
+export const LOW_SAMPLES_WARNING =
+  "Avec moins de 1000 échantillons, l'expressibilité est surestimée. Comparez uniquement des résultats obtenus avec le même nombre d'échantillons.";
+
+// ---- Comparateur ----
+
+export interface CompareRow {
+  ansatz: string;
+  expressibility: number;
+  entangling_capability: number;
+  gradient_variance: number;
+  gradient_variance_active: number | null;
+  inactive_fraction: number;
+  pareto: boolean;
+  [key: string]: unknown;
+}
+
+const METRIC_LABELS: Record<string, string> = {
+  expressibility: "Expressibilité",
+  entangling_capability: "Intrication",
+};
+
+function metricSentence(rows: CompareRow[], metric: "expressibility" | "entangling_capability", lowerIsBetter: boolean, winner: (n1: string, v1: string, n2: string, v2: string) => string): string {
+  const ordered = [...rows].sort((a, b) => (lowerIsBetter ? a[metric] - b[metric] : b[metric] - a[metric]));
+  const [first, second] = ordered;
+  const name1 = ansatzLabel(first.ansatz);
+  const name2 = ansatzLabel(second.ansatz);
+  const v1 = first[metric];
+  const v2 = second[metric];
+  const gap = Math.abs(v1 - v2);
+  const label = METRIC_LABELS[metric];
+  const stdKey = `${metric}_std`;
+  if (stdKey in first) {
+    const noise = (first[stdKey] as number) + (second[stdKey] as number);
+    if (gap <= noise) {
+      return `${label} : « ${name1} » et « ${name2} » sont indistinguables sur cette métrique (écart ${formatMetric(gap)}, inférieur à la somme des écarts-types ${formatMetric(noise)}).`;
+    }
+  } else if (gap <= 0.1 * Math.abs(v1)) {
+    return `${label} : les différences sont du même ordre que le bruit d'échantillonnage ; relancez avec plusieurs graines.`;
+  }
+  return winner(name1, formatMetric(v1), name2, formatMetric(v2));
+}
+
+/**
+ * Phrase de lecture du Comparateur. Un gagnant n'est désigné que si l'écart
+ * avec le deuxième dépasse 10 % (une graine) ou la somme des écarts-types
+ * (plusieurs graines). Chaîne vide s'il y a moins de deux circuits.
+ */
+export function compareSentence(rows: CompareRow[]): string {
+  if (rows.length < 2) return "";
+  const sentences = [
+    metricSentence(rows, "expressibility", true, (n1, v1, n2, v2) => `Le circuit le plus expressif est « ${n1} » (expressibilité ${v1}, contre ${v2} pour « ${n2} »).`),
+    metricSentence(rows, "entangling_capability", false, (n1, v1, n2, v2) => `La plus forte intrication est obtenue par « ${n1} » (${v1}, contre ${v2} pour « ${n2} »).`),
+  ];
+  if ("expressibility_std" in rows[0]) sentences.push("Valeurs moyennes sur les graines.");
+  return sentences.join(" ");
+}
+
+export const PARETO_NOTE =
+  "Ordonnée : variance du gradient moyennée sur les seuls paramètres actifs, pour ne pas pénaliser un circuit dont beaucoup de paramètres sont sans effet sur l'observable Z0.";
+
+/** Phrase du nuage de points : liste les ansatz du front de Pareto (indicateur calculé par l'API). */
+export function paretoSentence(rows: CompareRow[]): string {
+  if (rows.length === 0) return "";
+  const quoted = rows.filter((r) => r.pareto).map((r) => `« ${ansatzLabel(r.ansatz)} »`);
+  const first =
+    quoted.length === 1
+      ? `Le front de Pareto ne contient que ${quoted[0]}.`
+      : `Le front de Pareto contient ${quoted.slice(0, -1).join(", ")} et ${quoted[quoted.length - 1]}.`;
+  return `${first} Un circuit du front n'est battu par aucun autre sur les deux critères (expressibilité plus basse et variance du gradient des paramètres actifs plus élevée).`;
+}
+
+// ---- Plateau stérile ----
+
+export interface Fit {
+  factor_per_qubit: number | null;
+  r2: number | null;
+  n_points: number;
+}
+
+export const BARREN_FACTOR = 0.8;
+export const BARREN_R2 = 0.9;
+export const DILUTION_GAP = 0.1;
+export const DILUTION_SENTENCE =
+  "Une partie de la baisse de la moyenne sur tous les paramètres vient de paramètres sans effet sur l'observable (dilution), pas d'une perte de signal.";
+export const LOCAL_VS_GLOBAL_SENTENCE =
+  "Le circuit reste entraînable avec un coût local, mais pas avec un coût global ; l'entraînement d'un QCBM sur une distribution complète se rapproche du cas global.";
+export const PROPORTIONAL_LAYERS_NOTE = "En mode proportionnel, le nombre de couches est égal au nombre de qubits.";
+
+export function isNetDecay(fit: Fit): boolean {
+  return fit.factor_per_qubit !== null && fit.r2 !== null && fit.factor_per_qubit < BARREN_FACTOR && fit.r2 > BARREN_R2;
+}
+
+export function layersLine(mode: "fixed" | "linear", layers: number): string {
+  return mode === "linear" ? "Couches : égales au nombre de qubits." : `Couches : ${layers} (fixe).`;
+}
+
+/** Phrase d'une étude, fondée sur les paramètres actifs, avec la mention de dilution. */
+export function scalingSentence(name: string, active: Fit, all: Fit): string {
+  const label = `« ${ansatzLabel(name)} »`;
+  if (active.factor_per_qubit === null || active.r2 === null) {
+    return `${label} : données insuffisantes pour un ajustement sur les paramètres actifs (${active.n_points} point(s) valide(s), 3 nécessaires).`;
+  }
+  const factor = active.factor_per_qubit;
+  let sentence = `${label}, paramètres actifs : la variance est multipliée par ${formatFr(factor, 2)} à chaque qubit ajouté (ajustement exponentiel, R² = ${formatFr(active.r2, 3)})`;
+  sentence += isNetDecay(active)
+    ? " ; décroissance exponentielle nette : plateau stérile sur cette plage de qubits, avec cette observable."
+    : " ; pas de décroissance exponentielle nette sur cette plage.";
+  // La dilution ne peut qu'accélérer la baisse de la moyenne sur tous les paramètres.
+  if (all.factor_per_qubit !== null && all.factor_per_qubit < factor - DILUTION_GAP) {
+    sentence += ` Sur tous les paramètres, le facteur est ${formatFr(all.factor_per_qubit, 2)}. ${DILUTION_SENTENCE}`;
+  }
+  return sentence;
+}
+
+/** Phrase de la comparaison coût local / coût global, sur les paramètres actifs. */
+export function observablesSentence(name: string, local: Fit, global: Fit): string {
+  const label = `« ${ansatzLabel(name)} »`;
+  if (local.factor_per_qubit === null || global.factor_per_qubit === null || local.r2 === null || global.r2 === null) {
+    return `${label} : données insuffisantes pour comparer les coûts local et global (3 points valides nécessaires par série).`;
+  }
+  const sentence = `${label}, paramètres actifs : facteur par qubit ${formatFr(local.factor_per_qubit, 2)} en local (R² = ${formatFr(local.r2, 3)}) et ${formatFr(global.factor_per_qubit, 2)} en global (R² = ${formatFr(global.r2, 3)}).`;
+  const netLocal = isNetDecay(local);
+  const netGlobal = isNetDecay(global);
+  if (netGlobal && !netLocal) return `${sentence} ${LOCAL_VS_GLOBAL_SENTENCE}`;
+  if (netGlobal) return `${sentence} Décroissance exponentielle nette avec les deux coûts sur cette plage.`;
+  if (netLocal) return `${sentence} Décroissance exponentielle nette avec le coût local seulement sur cette plage.`;
+  return `${sentence} Pas de décroissance exponentielle nette sur cette plage, ni en local ni en global.`;
+}
+
+// ---- Entraînement (règle propre au web) ----
+
+export interface DistributionMetrics {
+  kl: number;
+  tvd: number;
+  hellinger: number;
+}
+
+export interface TrainingResult {
+  history: number[];
+  metrics: DistributionMetrics;
+  n_parameters: number;
+  n_iterations: number;
+  loss: string;
+  optimizer: string;
+  probabilities: number[];
+  baselines: Record<"independent" | "chow_liu", { probabilities: number[]; metrics: DistributionMetrics; n_parameters: number }>;
+  noise?: NoiseEvaluationResult | null;
+}
+
+export const BASELINE_LABELS: Record<string, string> = {
+  independent: "marginales indépendantes",
+  chow_liu: "arbre de Chow-Liu",
+};
+
+export const LOSS_LABELS: Record<string, string> = { kl: "KL", mmd: "MMD", tvd: "TVD" };
+export const OPTIMIZER_LABELS: Record<string, string> = { adam: "Adam", spsa: "SPSA", cobyla: "COBYLA" };
+
+// Écart relatif sous lequel une TVD mesurée est jugée équivalente à la meilleure TVD classique (règle des 10 %).
+export const RELATIVE_MARGIN = 0.1;
+
+/**
+ * Phrase factuelle : TVD atteinte par l'ansatz et comparaison avec la meilleure
+ * référence classique (TVD la plus basse), avec les nombres de paramètres.
+ * Règle des 10 % : mieux si TVD < 0,9 × référence, moins bien si > 1,1 ×, sinon équivalent.
+ */
+export function trainingSentence(result: TrainingResult, shots: number | null): string {
+  const tvd = result.metrics.tvd;
+  const [bestName, best] = Object.entries(result.baselines).sort(([, a], [, b]) => a.metrics.tvd - b.metrics.tvd)[0];
+  const bestLabel = BASELINE_LABELS[bestName];
+  const opening = `Après ${result.n_iterations} itérations (perte ${LOSS_LABELS[result.loss]}, ${OPTIMIZER_LABELS[result.optimizer]}), l'ansatz atteint une TVD de ${formatMetric(tvd)} avec ${result.n_parameters} paramètres.`;
+  let comparison: string;
+  if (tvd < (1 - RELATIVE_MARGIN) * best.metrics.tvd) {
+    comparison = `Il fait mieux que les deux références classiques, de plus de 10 % ; la meilleure (${bestLabel}, ${best.n_parameters} paramètres) atteint ${formatMetric(best.metrics.tvd)}.`;
+  } else if (tvd > (1 + RELATIVE_MARGIN) * best.metrics.tvd) {
+    comparison = `La référence classique « ${bestLabel} » fait mieux : TVD de ${formatMetric(best.metrics.tvd)} avec ${best.n_parameters} paramètres.`;
+  } else {
+    comparison = `Équivalent à la meilleure référence classique (écart inférieur à 10 %) : « ${bestLabel} » atteint ${formatMetric(best.metrics.tvd)} avec ${best.n_parameters} paramètres, contre ${result.n_parameters} pour l'ansatz.`;
+  }
+  const scope = shots
+    ? `Une seule initialisation, entraînée avec ${shots} tirages par évaluation ; TVD calculée sur les probabilités exactes.`
+    : "Une seule initialisation, en simulation exacte sans bruit.";
+  return `${opening} ${comparison} ${scope}`;
+}
+
+// ---- Bruit simulé ----
+
+export type NoiseRates = { p1: number; p2: number; readout: number };
+export type NoiseProfile = "faible" | "moyen" | "fort" | NoiseRates;
+export type NoiseTopology = "line" | "ring" | "full";
+
+/** Taux des profils nommés (copie de stochastiq.noise.PROFILES) : ordres de grandeur, pas des calibrations. */
+export const NOISE_PROFILES: Record<"faible" | "moyen" | "fort", NoiseRates> = {
+  faible: { p1: 1e-4, p2: 5e-4, readout: 1e-3 },
+  moyen: { p1: 1e-3, p2: 5e-3, readout: 1e-2 },
+  fort: { p1: 1e-2, p2: 2e-2, readout: 5e-2 },
+};
+
+export const NOISE_TOPOLOGY_LABELS: Record<NoiseTopology, string> = { line: "ligne", ring: "anneau", full: "complète" };
+
+export const NOISE_DISCLAIMER = "Les profils de bruit sont des ordres de grandeur, pas des calibrations de machines réelles.";
+
+/** Écriture française d'un taux : « 0,001 », « 0,0005 ». */
+export function formatRate(value: number): string {
+  return String(value).replace(".", ",");
+}
+
+/** Libellé d'un profil : « fort » ou « personnalisé (p1 0,001 ; p2 0,01 ; lecture 0,02) ». */
+export function profileLabel(profile: NoiseProfile): string {
+  if (typeof profile === "string") return `« ${profile} »`;
+  return `personnalisé (p1 ${formatRate(profile.p1)} ; p2 ${formatRate(profile.p2)} ; lecture ${formatRate(profile.readout)})`;
+}
+
+export interface NoiseEvaluationResult {
+  profile: NoiseProfile;
+  topology: NoiseTopology;
+  probabilities: number[];
+  metrics: DistributionMetrics;
+}
+
+/** Phrase de l'évaluation sous bruit d'un entraînement : TVD exacte puis bruitée, mêmes paramètres appris. */
+export function noiseEvaluationSentence(result: TrainingResult): string {
+  const noise = result.noise!;
+  return (
+    `Avec les mêmes paramètres appris, sous le bruit ${profileLabel(noise.profile)} (topologie ${NOISE_TOPOLOGY_LABELS[noise.topology]}), ` +
+    `la TVD passe de ${formatMetric(result.metrics.tvd)} à ${formatMetric(noise.metrics.tvd)}. ${NOISE_DISCLAIMER}`
+  );
+}
+
+export interface NoiseTvdResult {
+  mean_tvd: number;
+  std_tvd: number;
+  tvds: number[];
+  profile: NoiseRates;
+  topology: NoiseTopology;
+}
+
+/** Phrase de la carte « Dégradation sous bruit » : TVD moyenne idéal / bruité sur des paramètres aléatoires. */
+export function degradationSentence(noise: NoiseTvdResult, profile: NoiseProfile): string {
+  return (
+    `Sous le bruit ${profileLabel(profile)} (topologie ${NOISE_TOPOLOGY_LABELS[noise.topology]}), la sortie s'écarte en moyenne de ` +
+    `${formatMetric(noise.mean_tvd)} en TVD de la sortie idéale (écart type ${formatMetric(noise.std_tvd)}, ${noise.tvds.length} jeux de paramètres aléatoires). ` +
+    NOISE_DISCLAIMER
+  );
+}
+
+// ---- Axe logarithmique ----
+
+/**
+ * Puissances de dix couvrant [vmin, vmax], étendues d'une décade (côté le
+ * plus proche des données) tant qu'il y en a moins de deux. Lève une erreur
+ * si une borne est négative ou nulle.
+ */
+export function logTicks(vmin: number, vmax: number): number[] {
+  if (vmin <= 0 || vmax <= 0) throw new Error("logTicks attend des valeurs strictement positives.");
+  if (vmin > vmax) throw new Error("logTicks attend vmin <= vmax.");
+  const loLog = Math.log10(vmin);
+  const hiLog = Math.log10(vmax);
+  let lo = Math.ceil(loLog - 1e-9);
+  let hi = Math.floor(hiLog + 1e-9);
+  while (hi - lo + 1 < 2) {
+    if (loLog - (lo - 1) <= hi + 1 - hiLog) lo -= 1;
+    else hi += 1;
+  }
+  const ticks: number[] = [];
+  for (let k = lo; k <= hi; k += 1) ticks.push(Number(`1e${k}`));
+  return ticks;
+}
+
+/** Étiquette d'une graduation logarithmique : « 0,01 », ou « 1e-5 » sous 0,0001. */
+export function logTickLabel(value: number): string {
+  if (value <= 0) return "";
+  const exponent = Math.floor(Math.log10(value) + 1e-9);
+  if (value < 1e-4) {
+    const mantissa = Number((value / 10 ** exponent).toPrecision(2));
+    return `${String(mantissa).replace(".", ",")}e${exponent}`;
+  }
+  return formatFr(value, Math.max(0, -exponent));
+}
+
+// ---- Recommandation ----
+
+export interface PredictionValue {
+  value: number;
+  low: number | null;
+  high: number | null;
+  source: "model" | "reference";
+  interval_reliable: boolean;
+  interval_message: string | null;
+  validation_label: string;
+  coverage: number;
+  mae: number;
+}
+
+export interface RecommendationItem {
+  key: string;
+  ref: unknown;
+  diagnostic: { expressibility: number; entangling_capability: number; gradient_mean_variance: number; n_parameters: number; n_two_qubit_gates: number };
+  prediction: { final_tvd: PredictionValue; degradation: PredictionValue | null; noisy_tvd: { value: number; low: number | null; high: number | null; interval_reliable: boolean } | null };
+  measured: { run_id: number; tvd: number; noisy_tvd: number | null } | null;
+  value: number;
+  low: number | null;
+  high: number | null;
+  source: "measured" | "measured_degradation_predicted" | "model" | "reference";
+  evidence: "measured" | "interval" | "margin";
+  margin: number | null;
+  interval_message: string | null;
+}
+
+export interface RecommendationResult {
+  n_qubits: number;
+  layers: number;
+  noise_profile: NoiseRates | null;
+  topology: NoiseTopology;
+  budget: number;
+  classical: { best: "independent" | "chow_liu"; best_tvd: number; baselines: Record<"independent" | "chow_liu", { tvd: number; n_parameters: number }> };
+  items: RecommendationItem[];
+  decision: {
+    ranking: string[];
+    best: string;
+    evidence: RecommendationItem["evidence"];
+    indistinguishable: string[];
+    verdict: "justified" | "not_justified" | "equivalent" | "probably_justified" | "probably_not_justified" | "undetermined";
+    open: string[];
+    to_train: string[];
+    n_trainings: number;
+  };
+}
+
+/** Liste française entre guillemets : « A », « A » et « B », « A », « B » et « C ». */
+export function quotedList(names: string[]): string {
+  const quoted = names.map((n) => `« ${n} »`);
+  return quoted.length <= 1 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} et ${quoted[quoted.length - 1]}`;
+}
+
+/** Libellé d'un élément de la recommandation (nom du catalogue ou ansatz personnalisé). */
+export function itemLabel(item: RecommendationItem): string {
+  return refLabel(item.ref);
+}
+
+/**
+ * Phrases de la recommandation : indistinguables, puis verdict quantique / classique (règles calculées par l'API).
+ * Une valeur mesurée n'a pas de « borne » : elle suit la règle des 10 % ; une prédiction sans intervalle
+ * fiable suit une marge de deux fois l'erreur moyenne de validation (verdicts « probablement »).
+ */
+export function recommendationSentences(result: RecommendationResult): string[] {
+  const byKey = new Map(result.items.map((item) => [item.key, item]));
+  const label = (key: string) => itemLabel(byKey.get(key)!);
+  const { decision, classical } = result;
+  const best = byKey.get(decision.best)!;
+  const name = `« ${label(decision.best)} »`;
+  const quantity = result.noise_profile ? "TVD sous bruit" : "TVD";
+  const classicalParams = classical.baselines[classical.best].n_parameters;
+  const classicalText = `${formatMetric(classical.best_tvd)}, ${BASELINE_LABELS[classical.best]}`;
+  const sentences: string[] = [];
+  if (decision.indistinguishable.length > 0) {
+    const names = [decision.best, ...decision.indistinguishable].map(label);
+    sentences.push(`${quotedList(names)} sont indistinguables : leurs intervalles se recouvrent.`);
+  }
+  const params = `${best.diagnostic.n_parameters} paramètres pour l'ansatz, ${classicalParams} pour la référence`;
+  const margin = best.margin ?? 0;
+  switch (decision.verdict) {
+    case "justified":
+      sentences.push(
+        decision.evidence === "measured"
+          ? `Le quantique se justifie sur ce problème : ${name} atteint une ${quantity} mesurée de ${formatMetric(best.value)}, plus de 10 % sous la meilleure TVD classique (${classicalText} ; ${params}).`
+          : `Le quantique se justifie sur ce problème : la borne haute de ${name} (${quantity} ${formatMetric(best.high)}) est sous la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    case "not_justified":
+      sentences.push(
+        decision.evidence === "measured"
+          ? `Le quantique ne se justifie pas : ${name} atteint une ${quantity} mesurée de ${formatMetric(best.value)}, plus de 10 % au-dessus de la meilleure TVD classique (${classicalText} ; ${params}).`
+          : `Le quantique ne se justifie pas : la borne basse de ${name} (${quantity} ${formatMetric(best.low)}) est au-dessus de la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    case "equivalent":
+      sentences.push(
+        `Équivalent au classique (écart inférieur à 10 %) : le quantique n'apporte rien sur ce problème. ${name} atteint une ${quantity} mesurée de ${formatMetric(best.value)} avec ${best.diagnostic.n_parameters} paramètres, la meilleure référence classique (${BASELINE_LABELS[classical.best]}) ${formatMetric(classical.best_tvd)} avec ${classicalParams} paramètres.`,
+      );
+      break;
+    case "probably_justified":
+      sentences.push(
+        `Le quantique se justifie probablement sur ce problème : la ${quantity} prédite de ${name} (${formatMetric(best.value)}), même augmentée de deux fois l'erreur moyenne de validation (${formatMetric(margin)}), reste sous la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    case "probably_not_justified":
+      sentences.push(
+        `Le quantique ne se justifie probablement pas : la ${quantity} prédite de ${name} (${formatMetric(best.value)}), même diminuée de deux fois l'erreur moyenne de validation (${formatMetric(margin)}), reste au-dessus de la meilleure TVD classique (${classicalText}).`,
+      );
+      break;
+    default:
+      sentences.push(
+        decision.to_train.length > 0
+          ? `Indéterminé : entraînez ${quotedList(decision.to_train.map(label))} pour trancher.`
+          : "Indéterminé : aucun entraînement supplémentaire ne permet de trancher.",
+      );
+      if (decision.open.length > decision.to_train.length) {
+        const rest = decision.open.filter((key) => !decision.to_train.includes(key));
+        sentences.push(
+          `${decision.open.length} ansatz non entraînés ont un intervalle qui contient la meilleure TVD classique ; le budget de ${result.budget} itérations permet ${decision.n_trainings} entraînement(s) de 200 itérations, donc seuls les ${decision.to_train.length} mieux classés sont proposés. ${quotedList(rest.map(label))} restent à départager.`,
+        );
+      }
+  }
+  return sentences;
+}
+
+export const SOURCE_LABELS: Record<RecommendationItem["source"], string> = {
+  measured: "Entraînement mesuré",
+  measured_degradation_predicted: "TVD mesurée, dégradation prédite",
+  model: "Prédiction (modèle)",
+  reference: "Prédiction (référence)",
+};

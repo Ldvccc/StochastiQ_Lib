@@ -1,0 +1,165 @@
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.quantum_info import Statevector
+
+
+def fidelity_histogram(
+    ansatz: QuantumCircuit,
+    n_samples: int = 2000,
+    n_bins: int = 75,
+    seed: int | None = None,
+) -> dict:
+    """Calcule l'histogramme des fidélités d'un ansatz et sa référence de Haar.
+
+    On tire ``n_samples`` paires de paramètres uniformes dans [0, 2π] et on
+    calcule la fidélité |<ψ1|ψ2>|² entre les deux états produits. La
+    référence de Haar est P(F) = (d-1)(1-F)^(d-2), avec d = 2^n_qubits ; ses
+    probabilités par classe se calculent avec la CDF 1 - (1 - F)^(d-1).
+
+    Paramètres
+    ----------
+    ansatz : QuantumCircuit
+        Circuit paramétré à évaluer.
+    n_samples : int
+        Nombre de paires de paramètres tirées.
+    n_bins : int
+        Nombre de classes de l'histogramme sur [0, 1].
+    seed : int ou None
+        Graine du générateur aléatoire, pour la reproductibilité.
+
+    Retourne
+    --------
+    dict
+        ``edges`` (bornes des ``n_bins`` classes), ``circuit`` et ``haar``
+        (probabilités par classe, de somme 1).
+
+    Lève
+    ----
+    ValueError
+        Si le circuit n'a aucun paramètre libre.
+    """
+    n_params = ansatz.num_parameters
+    if n_params == 0:
+        raise ValueError("Le circuit n'a aucun paramètre libre.")
+
+    rng = np.random.default_rng(seed)
+    d = 2**ansatz.num_qubits
+
+    fidelities = np.empty(n_samples)
+    for i in range(n_samples):
+        theta1 = rng.uniform(0, 2 * np.pi, n_params)
+        theta2 = rng.uniform(0, 2 * np.pi, n_params)
+        psi1 = Statevector(ansatz.assign_parameters(theta1))
+        psi2 = Statevector(ansatz.assign_parameters(theta2))
+        fidelities[i] = np.abs(np.vdot(psi1.data, psi2.data)) ** 2
+
+    edges = np.linspace(0, 1, n_bins + 1)
+    counts, _ = np.histogram(fidelities, bins=edges)
+    p_ansatz = counts / n_samples
+
+    # Probabilités de Haar par classe, via la CDF 1 - (1 - F)^(d-1).
+    cdf = 1 - (1 - edges) ** (d - 1)
+    p_haar = np.diff(cdf)
+
+    return {"edges": edges, "circuit": p_ansatz, "haar": p_haar}
+
+
+def expressibility(
+    ansatz: QuantumCircuit,
+    n_samples: int = 2000,
+    n_bins: int = 75,
+    seed: int | None = None,
+) -> float:
+    """Calcule l'expressibilité d'un ansatz paramétré.
+
+    Implémente la mesure de Sim et al. (2019), arXiv:1905.10876 : on compare
+    l'histogramme des fidélités entre états produits par des paramètres
+    aléatoires (voir ``fidelity_histogram``) à la distribution de Haar
+    P(F) = (d-1)(1-F)^(d-2), avec d = 2^n_qubits, via la divergence KL.
+
+    Paramètres
+    ----------
+    ansatz : QuantumCircuit
+        Circuit paramétré à évaluer.
+    n_samples : int
+        Nombre de paires de paramètres tirées.
+    n_bins : int
+        Nombre de classes de l'histogramme sur [0, 1].
+    seed : int ou None
+        Graine du générateur aléatoire, pour la reproductibilité.
+
+    Retourne
+    --------
+    float
+        Divergence KL entre la distribution des fidélités et celle de Haar.
+        Plus la valeur est basse, plus l'ansatz est expressif.
+
+    Lève
+    ----
+    ValueError
+        Si le circuit n'a aucun paramètre libre.
+    """
+    histogram = fidelity_histogram(ansatz, n_samples=n_samples, n_bins=n_bins, seed=seed)
+    p_ansatz, p_haar = histogram["circuit"], histogram["haar"]
+
+    eps = 1e-12
+    return float(np.sum(p_ansatz * np.log((p_ansatz + eps) / (p_haar + eps))))
+
+
+def _meyer_wallach(state, n_qubits: int) -> float:
+    """Mesure de Meyer-Wallach Q d'un état pur.
+
+    Q = 2 * (1 - moyenne sur les qubits de Tr(ρ_k²)), où ρ_k est l'état
+    réduit du qubit k. ``state`` est un ``Statevector`` ou un tableau de
+    taille 2^n_qubits.
+    """
+    psi = np.asarray(state).reshape([2] * n_qubits)
+    purities = np.empty(n_qubits)
+    for k in range(n_qubits):
+        m = np.moveaxis(psi, k, 0).reshape(2, -1)
+        rho = m @ m.conj().T
+        purities[k] = np.real(np.trace(rho @ rho))
+    return float(2 * (1 - purities.mean()))
+
+
+def entangling_capability(
+    ansatz: QuantumCircuit,
+    n_samples: int = 2000,
+    seed: int | None = None,
+) -> float:
+    """Calcule la capacité d'intrication moyenne d'un ansatz paramétré.
+
+    Implémente la mesure de Sim et al. (2019), arXiv:1905.10876 : on tire
+    ``n_samples`` jeux de paramètres uniformes dans [0, 2π] et on moyenne la
+    mesure de Meyer-Wallach Q des états produits.
+
+    Paramètres
+    ----------
+    ansatz : QuantumCircuit
+        Circuit paramétré à évaluer.
+    n_samples : int
+        Nombre de jeux de paramètres tirés.
+    seed : int ou None
+        Graine du générateur aléatoire, pour la reproductibilité.
+
+    Retourne
+    --------
+    float
+        Valeur moyenne de Q, entre 0 (états produits) et 1 (fortement intriqués).
+
+    Lève
+    ----
+    ValueError
+        Si le circuit n'a aucun paramètre libre.
+    """
+    n_params = ansatz.num_parameters
+    if n_params == 0:
+        raise ValueError("Le circuit n'a aucun paramètre libre.")
+
+    rng = np.random.default_rng(seed)
+    values = np.empty(n_samples)
+    for i in range(n_samples):
+        theta = rng.uniform(0, 2 * np.pi, n_params)
+        state = Statevector(ansatz.assign_parameters(theta))
+        values[i] = _meyer_wallach(state, ansatz.num_qubits)
+    return float(values.mean())
